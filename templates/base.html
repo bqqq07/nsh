@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Weekly Employee Evaluation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/print.css') }}" rel="stylesheet" media="print">
+</head>
+<body>
+  <!-- Top Navigation -->
+  <header class="topbar no-print">
+    <div class="wrap">
+      <a class="brand" href="{{ url_for('index') }}">
+        <img class="logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Company logo">
+        <span class="title">Weekly Employee Evaluation</span>
+      </a>
+
+      {% if g.user %}
+      <nav class="navlinks">
+        {% if g.role == 'admin' %}
+          <a href="{{ url_for('admin_employees') }}">All Employees</a>
+          <a href="{{ url_for('admin_report_picker') }}">Supervisors Reports</a>
+          <a href="{{ url_for('admin_site_report_picker') }}">Site Supervisors Reports</a>
+          <a href="{{ url_for('admin_users') }}">Admin Users</a>
+          <a href="{{ url_for('admin_print_select') }}">Print</a>  <!-- الجديد -->
+          <a href="{{ url_for('admin_kpi') }}">KPI</a>
+        {% elif g.role == 'site_supervisor' %}
+          <a href="{{ url_for('site_supervisors') }}">My Supervisors</a>
+          <a href="{{ url_for('site_report_select') }}">Site Reports</a>
+        {% else %}
+          <a href="{{ url_for('employees') }}">Employees</a>
+          <a href="{{ url_for('supervisor_report_select') }}">Reports</a>
+        {% endif %}
+        <a href="{{ url_for('logout') }}">Sign out</a>
+      </nav>
+      {% endif %}
+    </div>
+  </header>
+
+  <!-- Page content -->
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash no-print">
+          {% for cat, msg in messages %}
+            <div class="alert {{ cat }}">{{ msg }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Disable autocomplete site-wide -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('form').forEach(f => f.setAttribute('autocomplete','off'));
+      document.querySelectorAll('input[type="text"],input[type="search"],input[type="email"],input[type="number"],input[type="password"],textarea')
+        .forEach(el => {
+          el.setAttribute('autocomplete','off');
+          el.setAttribute('autocorrect','off');
+          el.setAttribute('autocapitalize','off');
+          el.setAttribute('spellcheck','false');
+        });
+    });
+  </script>
+</body>
+</html>

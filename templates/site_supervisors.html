@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="report">
+  <header class="report-header">
+    <div class="report-head-left">
+      <img class="report-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Company logo">
+    </div>
+    <div class="report-head-center">
+      <h1>My Supervisors</h1>
+      <p class="muted">Assign supervisors you oversee and evaluate them weekly</p>
+    </div>
+    <div class="report-head-right"></div>
+  </header>
+
+  <!-- Add / Create+Assign Supervisor -->
+  <section class="card no-print">
+    <form method="post" class="grid3" autocomplete="off">
+      <label>Supervisor ID
+        <input type="text"
+               name="supervisor_code"
+               placeholder="e.g. 2540"
+               required
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      </label>
+      <label>Name (optional if creating)
+        <input type="text"
+               name="supervisor_name"
+               placeholder="Full name (optional)">
+      </label>
+      <div class="align-end">
+        <button class="btn primary">Add / Assign</button>
+      </div>
+    </form>
+    <p class="muted small">If the ID doesn't exist, a new active <strong>Supervisor</strong> user will be created and assigned.</p>
+  </section>
+
+  <!-- Assigned supervisors -->
+  <section class="card">
+    <h2>Assigned Supervisors</h2>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Supervisor ID</th>
+          <th>Name</th>
+          <th class="no-print">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for link, sup in links %}
+        <tr>
+          <td class="nowrap">{{ sup.supervisor_code }}</td>
+          <td>{{ sup.name }}</td>
+          <td class="no-print">
+            <a class="btn" href="{{ url_for('site_evaluate_new', sup_user_id=sup.id) }}">Evaluate</a>
+            <form method="post"
+                  action="{{ url_for('site_supervisors_remove', link_id=link.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Remove this supervisor?')">
+              <button class="btn">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3" class="center muted">No supervisors assigned yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</section>
+{% endblock %}

@@ -1,0 +1,225 @@
+/* ========== Theme ==========
+   ألوان هادئة ومريحة للعين
+*/
+:root{
+  --bg:#F7F8FA; --card:#fff; --text:#1F2937;
+  --primary:#3A7CA5; --accent:#6AA3C1;
+  --muted:#6B7280; --border:#E5E7EB;
+  --success:#2E7D32; --warning:#EDB458; --danger:#C62828;
+}
+
+/* ========== Base ========== */
+*{ box-sizing:border-box }
+html,body{ margin:0; padding:0 }
+body{
+  background:var(--bg);
+  color:var(--text);
+  font:14px/1.5 Inter, Roboto, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+}
+a{ color:var(--primary); text-decoration:none }
+a:hover{ text-decoration:underline }
+h1,h2{ margin:14px 0 }
+.container{ max-width:1100px; margin:24px auto; padding:0 14px }
+.muted{ color:var(--muted) }
+.no-print{} /* تخفى في print.css فقط */
+
+/* ========== Topbar (with logo) ========== */
+.topbar{ background:#0f172a; color:#fff }
+.topbar .wrap{
+  max-width:1100px; margin:0 auto; padding:12px 16px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.topbar .brand{
+  display:flex; align-items:center; gap:10px; color:#fff;
+}
+.topbar .brand .logo{ height:14px; width:auto; display:block }
+.topbar .brand .title{ font-weight:600; letter-spacing:.2px }
+.topbar .navlinks a{ color:#fff; margin-left:16px; opacity:.9 }
+.topbar .navlinks a:hover{ opacity:1; text-decoration:underline }
+
+/* ========== Cards / Sections ========== */
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:14px;
+  margin-bottom:14px;
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
+}
+.card.small{ max-width:420px; margin:48px auto }
+
+/* ========== Forms ========== */
+label{ display:flex; flex-direction:column; gap:6px; margin:8px 0 }
+input,select,textarea{
+  padding:10px; border:1px solid var(--border); border-radius:8px; background:#fff;
+}
+input[type="radio"]{ transform:scale(1.1) }
+.center{ text-align:center }
+.align-end{ display:flex; align-items:end }
+.self-end{ align-self:end }
+
+/* ========== Buttons ========== */
+.btn{
+  display:inline-block;
+  padding:10px 14px;
+  border:1px solid var(--border);
+  background:#fff;
+  border-radius:10px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.btn:hover{ filter:brightness(0.98) }
+.btn.primary{
+  background:var(--primary);
+  color:#fff;
+  border-color:var(--primary);
+}
+.btn.primary:hover{ filter:brightness(0.95) }
+.actions{ display:flex; gap:8px; margin-top:12px }
+
+/* ========== Grid helpers ========== */
+.grid1{ display:grid; gap:12px }
+.grid2{ display:grid; grid-template-columns:1fr 1fr; gap:12px }
+.grid3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px }
+.grid4{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px }
+/* نموذج الموظفين: 4 حقول + زر */
+.grid4auto{
+  display:grid;
+  grid-template-columns:repeat(4,1fr) auto;
+  gap:12px;
+  align-items:end;
+}
+
+/* ========== Flash messages ========== */
+.flash{ margin:12px 0 }
+.alert{
+  padding:10px; border-radius:8px; margin-bottom:8px;
+  background:#eef0f4; border:1px solid var(--border);
+}
+.alert.success{ background:#e8f5e9; border-color:#c8e6c9; color:#1b5e20 }
+.alert.danger{ background:#ffebee; border-color:#ffcdd2; color:#b71c1c }
+.alert.warning{ background:#fff8e1; border-color:#ffecb3; color:#8d6e63 }
+
+/* ========== Tables (screen) ========== */
+.table{
+  width:100%;
+  border-collapse:collapse;
+  border-spacing:0;
+  table-layout:auto;              /* افتراضيًا للشاشة */
+}
+.table th,.table td{
+  border:1px solid var(--border);
+  padding:8px;
+  vertical-align:top;
+}
+.table thead th{
+  background:#F0F4F8;
+  text-align:left;
+}
+.table.compact th,.table.compact td{ padding:6px }
+.nowrap{ white-space:nowrap }
+
+/* داخل صفحات التقرير فقط: اجعل التخطيط ثابت */
+.report .table{ table-layout:fixed }
+
+/* ========== Summary badge (eval form) ========== */
+.summary{
+  border:1px dashed var(--border);
+  border-radius:10px;
+  padding:10px;
+  background:#fafbfc;
+}
+
+/* ========== Report header (with logo) ========== */
+.report-header{
+  display:grid;
+  grid-template-columns: 120px 1fr 80px; /* شعار يسار، عنوان وسط */
+  align-items:center;
+  gap:8px;
+  margin-bottom:12px;
+}
+.report-logo{ max-height:48px; width:auto; display:block }
+
+/* ========== Signatures (no table) ========== */
+.signatures{ margin-top:8px }
+.sig-row{
+  display:flex; align-items:center; gap:10px;
+  margin:6px 0;
+}
+.sig-label{ white-space:nowrap; font-weight:600 }
+.sig-dots{
+  flex:1; height:0;
+  border-bottom:1px dotted #333;   /* يظهر كنقاط */
+  transform: translateY(-2px);
+}
+/* ==== Supervisor eval layout fix ==== */
+.form-flat .week-row{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.table.compact{
+  table-layout: fixed; /* يثبّت أعمدة الجدول ويمنع التمدد */
+  width: 100%;
+}
+.table.compact input[type="text"],
+.table.compact input[type="number"],
+.table.compact textarea{
+  width: 100%;
+}
+
+/* نسب أعمدة الجداول */
+.table.compact col.w-target  { width: 52%; }
+.table.compact col.w-ach     { width: 12%; }
+.table.compact col.w-remarks { width: 36%; }
+
+.table.compact col.w-crit    { width: 40%; }
+.table.compact col.w-rate    { width: 8%;  }  /* خمسة أعمدة = 40% */
+.table.compact col.w-comment { width: 20%; }
+
+.table.compact td.center, .table.compact th.center{ text-align: center; }
+@media print {
+  .no-print { display: none !important; }
+  .print-page { page-break-after: always; }
+  .print-page:last-child { page-break-after: auto; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+.report { break-inside: avoid; }
+
+
+/* قلل احتمالية تقطيع البطاقات */
+.report { break-inside: avoid; }
+
+.kpi-cards{
+  display:grid; grid-template-columns: repeat(4, minmax(0,1fr));
+  gap:12px; margin:12px 0;
+}
+.kpi{ background:var(--card,#fff); border:1px solid var(--border,#e7e7e7);
+      border-radius:10px; padding:12px; }
+.kpi-title{ font-size:.9rem; color:#6b7280; }
+.kpi-value{ font-size:1.6rem; font-weight:700; margin-top:6px; }
+.kpi-sub{ color:#9ca3af; margin-top:2px; }
+.mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+
+/* KPI cards (مستخدمة مسبقًا في kpi.html) */
+.kpi-cards{
+  display:grid; grid-template-columns: repeat(2, minmax(0,1fr));
+  gap:12px; margin:12px 0;
+}
+.kpi{ background:#fff; border:1px solid var(--border,#e7e7e7);
+      border-radius:10px; padding:12px; }
+.kpi-title{ font-size:.9rem; color:#6b7280; }
+.kpi-value{ font-size:1.6rem; font-weight:700; margin-top:6px; }
+.kpi-sub{ color:#9ca3af; margin-top:2px; }
+.mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+
+/* highlight missing */
+.row-miss { background: #fee2e2; }            /* أحمر فاتح */
+.row-miss td { border-top-color:#fca5a5; }    /* خط فاصل أخف */
+@media print {
+  .no-print { display: none !important; }
+  .print-page { page-break-after: always; }
+  .print-page:last-child { page-break-after: auto; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

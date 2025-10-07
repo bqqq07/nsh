@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Admin Reports</h1>
+<section class="card">
+  <form method="post" class="grid3">
+    <label>Week Start (Sunday)
+      <input type="date" name="week_start" value="{{ ws.isoformat() }}" required>
+    </label>
+    <label>Week End (Thursday)
+      <input type="date" name="week_end" value="{{ we.isoformat() }}" required>
+    </label>
+    <div class="align-end">
+      <button class="btn primary">Open All-Employees Report</button>
+    </div>
+  </form>
+  <p class="muted">You will get a consolidated table with print option, and links to each detailed employee report.</p>
+</section>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="report">
+  <header class="report-header">
+    <div class="report-head-left">
+      <img class="report-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo">
+    </div>
+    <div class="report-head-center">
+      <h1>Site Reports</h1>
+      <p class="muted">Pick a supervisor you oversee and a Sun→Thu week</p>
+    </div>
+    <div class="report-head-right"></div>
+  </header>
+
+  <section class="card">
+    <form method="post" action="{{ url_for('site_report_select') }}" class="grid3" autocomplete="off">
+      <label>Supervisor
+        <select name="sup_user_id" required>
+          {% for s in supervisors %}
+            <option value="{{ s.id }}">{{ s.name or '—' }} (ID: {{ s.supervisor_code }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Week Start (Sunday)
+        <input type="date" name="week_start" value="{{ ws.isoformat() }}" required>
+      </label>
+      <label>Week End (Thursday)
+        <input type="date" name="week_end" value="{{ we.isoformat() }}" required>
+      </label>
+      <div class="align-end">
+        <button class="btn primary" type="submit">Show Report</button>
+      </div>
+    </form>
+  </section>
+</section>
+{% endblock %}
+<div class="no-print" style="margin-top:12px">
+  <a class="btn" href="{{ url_for('site_print_select') }}">Print reports</a>
+</div>

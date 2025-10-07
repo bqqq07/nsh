@@ -1,0 +1,114 @@
+<header class="report-header">
+  <div class="report-head-left">
+    <img class="report-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo">
+  </div>
+  <div class="report-head-center">
+    <h1>Weekly Employee Evaluation</h1>
+    <p class="muted">
+      Employee: {{ employee.name }} ({{ employee.emp_number }}) ·
+      Dept: {{ employee.department or '—' }} ·
+      Site: {{ employee.site or '—' }}
+    </p>
+  </div>
+  <div class="report-head-right"></div>
+</header>
+
+<section class="card report-meta">
+  <div class="grid2">
+    <div><strong>Week:</strong>
+      {{ (ev.week_start if ev else '—') }} → {{ (ev.week_end if ev else '—') }}
+    </div>
+    <div><strong>Evaluator (Supervisor ID):</strong>
+      {{ evaluator_code or '—' }}{% if evaluator_name %} — {{ evaluator_name }}{% endif %}
+    </div>
+  </div>
+  <div>
+    <strong>Total:</strong>
+    {% if ev %}
+      {{ '%.2f'|format(ev.total_score or 0) }} / 100 · {{ ev.overall_band or '—' }}
+    {% else %}
+      — / 100 · —
+    {% endif %}
+  </div>
+</section>
+
+<h2>1. Weekly Targets</h2>
+<table class="table compact">
+  <thead><tr><th>Target / Task</th><th class="nowrap">Achieved %</th><th>Remarks</th></tr></thead>
+  <tbody>
+    {% for i in [1,2,3,4] %}
+    {% set tx = ev['t%s_text' % i] if ev else '' %}
+    {% set pc = ev['t%s_percent' % i] if ev else '' %}
+    {% set rm = ev['t%s_remarks' % i] if ev else '' %}
+    <tr>
+      <td>{{ tx }}</td>
+      <td class="nowrap">{% if pc != '' %}{{ '%.0f'|format(pc or 0) }}%{% else %}—{% endif %}</td>
+      <td class="clip2">{{ rm }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr><th class="right">Subtotal</th>
+      <th class="nowrap">
+        {% if ev %}{{ '%.2f'|format(ev.targets_score or 0) }}{% else %}—{% endif %} / 40
+      </th><th></th></tr>
+  </tfoot>
+</table>
+
+<h2>2. Performance</h2>
+<table class="table compact">
+  <colgroup><col style="width:46%"><col style="width:12%"><col style="width:42%"></colgroup>
+  <thead><tr><th>Criteria</th><th class="nowrap">Rating</th><th>Comments</th></tr></thead>
+  <tbody>
+    {% set rows = [
+      ('p_punctuality','c_punctuality','Punctuality & Attendance'),
+      ('p_quality','c_quality','Quality of Work'),
+      ('p_productivity','c_productivity','Productivity'),
+      ('p_communication','c_communication','Communication & Teamwork'),
+      ('p_problemsolving','c_problemsolving','Problem-Solving'),
+      ('p_compliance','c_compliance','Compliance with Safety/Rules')
+    ] %}
+    {% for pk,ck,label in rows %}
+    <tr>
+      <td>{{ label }}</td>
+      <td class="nowrap">{% if ev %}{{ ev[pk] or 0 }}{% else %}—{% endif %}</td>
+      <td class="clip2">{% if ev %}{{ ev[ck] }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr><th class="right">Subtotal</th>
+      <th class="nowrap">
+        {% if ev %}{{ '%.2f'|format(ev.perf_score or 0) }}{% else %}—{% endif %} / 60
+      </th><th></th></tr>
+    <tr><th class="right">TOTAL</th>
+      <th class="nowrap">
+        {% if ev %}{{ '%.2f'|format(ev.total_score or 0) }}{% else %}—{% endif %} / 100 ·
+        {% if ev %}{{ ev.overall_band or '—' }}{% else %}—{% endif %}
+      </th><th></th></tr>
+  </tfoot>
+</table>
+
+<h2>3. Summary & Notes</h2>
+<table class="table kv">
+  <tbody>
+    <tr>
+      <th>Strengths observed</th>
+      <td>{{ ev.strengths if ev else '' }}</td>
+    </tr>
+    <tr>
+      <th>Areas for improvement</th>
+      <td>{{ ev.improvements if ev else '' }}</td>
+    </tr>
+    <tr>
+      <th>Training/Support required</th>
+      <td>{{ ev.training_needed if ev else '' }}</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>4. Signatures</h2>
+<div class="signatures">
+  <div class="sig-row"><span class="sig-label">Supervisor sign</span><span class="sig-dots"></span></div>
+  <div class="sig-row"><span class="sig-label">Employee sign</span><span class="sig-dots"></span></div>
+</div>

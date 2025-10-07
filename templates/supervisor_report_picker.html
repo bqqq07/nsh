@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Supervisor Reports</h1>
+<section class="card">
+  <form method="post" class="grid3">
+    <label>Employee
+      <select name="emp_id" required>
+        <option value="" disabled selected>Select employee…</option>
+        {% for e in employees %}
+          <option value="{{ e.id }}">{{ e.name }} ({{ e.emp_number }})</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>Week Start (Sunday)
+      <input type="date" name="week_start" value="{{ ws.isoformat() }}" required>
+    </label>
+    <label>Week End (Thursday)
+      <input type="date" name="week_end" value="{{ we.isoformat() }}" required>
+    </label>
+
+    <div class="align-end">
+      <button class="btn primary">Open Detailed Report</button>
+    </div>
+  </form>
+  <p class="muted">Pick an employee and a full Sun→Thu week to view the detailed report.</p>
+</section>
+{% endblock %}

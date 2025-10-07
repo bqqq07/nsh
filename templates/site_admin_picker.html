@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="report">
+  <header class="report-header">
+    <div class="report-head-left">
+      <img class="report-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo">
+    </div>
+    <div class="report-head-center">
+      <h1>Site Reports (Admin)</h1>
+      <p class="muted">Pick a Sun→Thu week</p>
+    </div>
+    <div class="report-head-right"></div>
+  </header>
+
+  <section class="card">
+    <form method="post" action="{{ url_for('admin_site_report_picker') }}" class="grid3">
+      <label>Week Start (Sunday)
+        <input type="date" name="week_start" value="{{ ws.isoformat() }}" required>
+      </label>
+      <label>Week End (Thursday)
+        <input type="date" name="week_end" value="{{ we.isoformat() }}" required>
+      </label>
+      <div class="align-end">
+        <button class="btn primary" type="submit">Search</button>
+      </div>
+    </form>
+  </section>
+</section>
+{% endblock %}

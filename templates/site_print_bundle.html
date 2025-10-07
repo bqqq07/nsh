@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="no-print" style="display:flex; gap:8px; justify-content:flex-end; margin-bottom:10px">
+  <a class="btn" href="{{ url_for('site_print_select') }}">Back</a>
+  <button class="btn primary" onclick="window.print()">Print</button>
+</section>
+
+{% for ev, emp, evaluator in evals %}
+<section class="report print-page">
+  <header class="report-header">
+    <div class="report-head-left">
+      <img class="report-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo">
+    </div>
+    <div class="report-head-center">
+      <h1>Weekly Employee Evaluation</h1>
+      <p class="muted">
+        Employee: {{ emp.name }} ({{ emp.emp_number }}) · Dept: {{ emp.department or '—' }} · Site: {{ emp.site or '—' }}
+      </p>
+    </div>
+    <div class="report-head-right"></div>
+  </header>
+
+  <section class="card report-meta">
+    <div class="grid2">
+      <div>
+        <div><strong>Week:</strong> {{ ev.week_start }} → {{ ev.week_end }}</div>
+        <div><strong>Total:</strong> {{ '%.2f'|format(ev.total_score or 0) }} / 100 · {{ ev.overall_band or '—' }}</div>
+      </div>
+      <div>
+        <div><strong>Supervisor:</strong> {{ supervisor.name or '—' }} (ID: {{ supervisor.supervisor_code }})</div>
+        <div><strong>Evaluator (Supervisor ID):</strong> {{ evaluator.supervisor_code if evaluator else '—' }}{% if evaluator and evaluator.name %} — {{ evaluator.name }}{% endif %}</div>
+      </div>
+    </div>
+  </section>
+
+  <h2>1. Weekly Targets</h2>
+  <table class="table compact">
+    <thead><tr><th>Target / Task</th><th class="nowrap">Achieved %</th><th>Remarks</th></tr></thead>
+    <tbody>
+      <tr><td>{{ ev.t1_text }}</td><td class="nowrap">{{ '%.0f'|format(ev.t1_percent or 0) }}%</td><td class="clip2">{{ ev.t1_remarks }}</td></tr>
+      <tr><td>{{ ev.t2_text }}</td><td class="nowrap">{{ '%.0f'|format(ev.t2_percent or 0) }}%</td><td class="clip2">{{ ev.t2_remarks }}</td></tr>
+      <tr><td>{{ ev.t3_text }}</td><td class="nowrap">{{ '%.0f'|format(ev.t3_percent or 0) }}%</td><td class="clip2">{{ ev.t3_remarks }}</td></tr>
+      <tr><td>{{ ev.t4_text }}</td><td class="nowrap">{{ '%.0f'|format(ev.t4_percent or 0) }}%</td><td class="clip2">{{ ev.t4_remarks }}</td></tr>
+    </tbody>
+    <tfoot><tr><th class="right">Subtotal</th><th class="nowrap">{{ '%.2f'|format(ev.targets_score or 0) }} / 40</th><th></th></tr></tfoot>
+  </table>
+
+  <h2>2. Performance</h2>
+  <table class="table compact">
+    <colgroup><col style="width:46%"><col style="width:12%"><col style="width:42%"></colgroup>
+    <thead><tr><th>Criteria</th><th class="nowrap">Rating</th><th>Comments</th></tr></thead>
+    <tbody>
+      <tr><td>Punctuality & Attendance</td><td class="nowrap">{{ ev.p_punctuality }}</td><td class="clip2">{{ ev.c_punctuality }}</td></tr>
+      <tr><td>Quality of Work</td><td class="nowrap">{{ ev.p_quality }}</td><td class="clip2">{{ ev.c_quality }}</td></tr>
+      <tr><td>Productivity</td><td class="nowrap">{{ ev.p_productivity }}</td><td class="clip2">{{ ev.c_productivity }}</td></tr>
+      <tr><td>Communication & Teamwork</td><td class="nowrap">{{ ev.p_communication }}</td><td class="clip2">{{ ev.c_communication }}</td></tr>
+      <tr><td>Problem-Solving</td><td class="nowrap">{{ ev.p_problemsolving }}</td><td class="clip2">{{ ev.c_problemsolving }}</td></tr>
+      <tr><td>Compliance with Safety/Rules</td><td class="nowrap">{{ ev.p_compliance }}</td><td class="clip2">{{ ev.c_compliance }}</td></tr>
+    </tbody>
+    <tfoot>
+      <tr><th class="right">Subtotal</th><th class="nowrap">{{ '%.2f'|format(ev.perf_score or 0) }} / 60</th><th></th></tr>
+      <tr><th class="right">TOTAL</th><th class="nowrap">{{ '%.2f'|format(ev.total_score or 0) }} / 100 · {{ ev.overall_band or '—' }}</th><th></th></tr>
+    </tfoot>
+  </table>
+
+  <h2>3. Signatures</h2>
+  <div class="signatures">
+    <div class="sig-row"><span class="sig-label">Supervisor sign</span><span class="sig-dots"></span></div>
+    <div class="sig-row"><span class="sig-label">Employee sign</span><span class="sig-dots"></span></div>
+  </div>
+</section>
+{% endfor %}
+
+{% if not_evaluated and not_evaluated|length > 0 %}
+<section class="report print-page">
+  <header class="report-header">
+    <div class="report-head-left">
+      <img class="report-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo">
+    </div>
+    <div class="report-head-center">
+      <h1>Not Evaluated This Week</h1>
+      <p class="muted">Supervisor: {{ supervisor.name or '—' }} (ID: {{ supervisor.supervisor_code }}) · Week: {{ ws }} → {{ we }}</p>
+    </div>
+    <div class="report-head-right"></div>
+  </header>
+
+  <section class="card">
+    <table class="table">
+      <thead><tr><th>#</th><th>Employee</th><th>Emp No</th><th>Department</th><th>Site</th></tr></thead>
+      <tbody>
+        {% for e in not_evaluated %}
+        <tr>
+          <td class="center">{{ loop.index }}</td>
+          <td>{{ e.name }}</td>
+          <td>{{ e.emp_number }}</td>
+          <td>{{ e.department or '—' }}</td>
+          <td>{{ e.site or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</section>
+{% endif %}
+{% endblock %}

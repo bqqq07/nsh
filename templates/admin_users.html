@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Admin · Allowed Users</h1>
+
+<section class="card">
+  <form method="post" class="grid2">
+    <label>Supervisor ID
+      <input name="code" required>
+    </label>
+    <label>Name (optional)
+      <input name="name">
+    </label>
+    <label>Role
+      <select name="role">
+        <option value="site_supervisor">Site Supervisor</option>
+        <option value="supervisor">Supervisor</option>
+        <option value="admin">Admin</option>
+      </select>
+    </label>
+    <div class="align-end">
+      <button class="btn primary">Add</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <table class="table">
+    <thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Status</th><th class="no-print">Actions</th></tr></thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.supervisor_code }}</td>
+        <td>{{ u.name }}</td>
+        <td>{{ u.role }}</td>
+        <td>{{ 'Active' if u.is_active else 'Inactive' }}</td>
+        <td class="no-print">
+          {% if u.role != 'admin' %}
+          <form method="post" action="{{ url_for('admin_users_toggle', user_id=u.id) }}">
+            <button class="btn">{{ 'Deactivate' if u.is_active else 'Activate' }}</button>
+          </form>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

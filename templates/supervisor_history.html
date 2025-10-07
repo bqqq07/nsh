@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="report">
+  <header class="report-header">
+    <div class="report-head-left">
+      <img class="report-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo">
+    </div>
+    <div class="report-head-center">
+      <h1>Supervisor • History</h1>
+      <p class="muted">{{ sup.name or '—' }} (ID: {{ sup.supervisor_code }})</p>
+    </div>
+    <div class="report-head-right"></div>
+  </header>
+
+  <section class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Week</th><th class="right">Targets /40</th><th class="right">Performance /60</th>
+          <th class="right">Total /100</th><th class="center">Band</th><th>Evaluator</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for se in evals %}
+        {% set eval_user = g.get('user_cache_' ~ se.evaluator_id) or None %}
+        <tr>
+          <td>{{ se.week_start }} → {{ se.week_end }}</td>
+          <td class="right">{{ '%.2f'|format(se.targets_score or 0) }}</td>
+          <td class="right">{{ '%.2f'|format(se.perf_score or 0) }}</td>
+          <td class="right"><strong>{{ '%.2f'|format(se.total_score or 0) }}</strong></td>
+          <td class="center">{{ se.overall_band or '—' }}</td>
+          <td>
+            {% set ev = db.session.get(User, se.evaluator_id) %}
+            {{ ev.name or '—' }} ({{ ev.supervisor_code if ev else '—' }})
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="center muted">No evaluations yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</section>
+{% endblock %}

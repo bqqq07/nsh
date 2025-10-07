@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="report">
+  <header class="report-header">
+    <div class="report-head-left">
+      <img class="report-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo">
+    </div>
+    <div class="report-head-center">
+      <h1>Admin • Print all weekly reports</h1>
+      <p class="muted">Pick a Sun→Thu week, then print everything.</p>
+    </div>
+    <div class="report-head-right"></div>
+  </header>
+
+  <section class="card">
+    <form method="post" class="grid3">
+      <label>Week Start (Sunday)
+        <input type="date" name="week_start" value="{{ ws.isoformat() }}" required>
+      </label>
+      <label>Week End (Thursday)
+        <input type="date" name="week_end" value="{{ we.isoformat() }}" required>
+      </label>
+      <div class="align-end">
+        <button class="btn primary">Print</button>
+      </div>
+    </form>
+  </section>
+</section>
+{% endblock %}

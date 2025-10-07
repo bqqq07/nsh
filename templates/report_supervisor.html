@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Supervisor Weekly Report</h1>
+<p class="muted">Week: {{ ws }} → {{ we }}</p>
+
+<section class="card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Emp. No</th>
+        <th>Name</th>
+        <th>Targets /40</th>
+        <th>Performance /60</th>
+        <th>Total /100</th>
+        <th>Overall</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ev, emp in evals %}
+      <tr>
+        <td>{{ emp.emp_number }}</td>
+        <td>{{ emp.name }}</td>
+        <td>{{ ev.targets_score }}</td>
+        <td>{{ ev.perf_score }}</td>
+        <td>{{ ev.total_score }}</td>
+        <td>{{ ev.overall_band }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="no-print actions">
+    <button onclick="window.print()" class="btn primary">Print</button>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="report">
+  <header class="report-header">
+    <div class="report-head-left">
+      <img class="report-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Company logo">
+    </div>
+    <div class="report-head-center">
+      <h1>Evaluation History</h1>
+      <p class="muted">
+        {{ emp.name }} ({{ emp.emp_number }}) — {{ emp.department }} / {{ emp.site }}
+      </p>
+    </div>
+    <div class="report-head-right"></div>
+  </header>
+
+  <section class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Week</th>
+          <th class="nowrap">Targets /40</th>
+          <th class="nowrap">Performance /60</th>
+          <th class="nowrap">Total /100</th>
+          <th>Overall</th>
+          <th class="no-print">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in evals %}
+        <tr>
+          <td class="nowrap">{{ ev.week_start }} → {{ ev.week_end }}</td>
+          <td class="nowrap">{{ ev.targets_score }}</td>
+          <td class="nowrap">{{ ev.perf_score }}</td>
+          <td class="nowrap">{{ ev.total_score }}</td>
+          <td>{{ ev.overall_band }}</td>
+          <td class="no-print">
+            <a class="btn" href="{{ url_for('report_employee',
+                                             emp_id=emp.id,
+                                             week_start=ev.week_start.isoformat(),
+                                             week_end=ev.week_end.isoformat()) }}">Open</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="center muted">No evaluations yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="no-print actions">
+      <a class="btn" href="{{ url_for('admin_employees') }}">Back</a>
+      <button onclick="window.print()" class="btn primary">Print</button>
+    </div>
+  </section>
+</section>
+{% endblock %}
