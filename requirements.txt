@@ -1,5 +1,10 @@
-Flask==3.0.2
-Fla==3.1.1
-python-dateutil==2.9.0.post0
-flask-sqlalchemy
-sqlalchemy
+Flask>=3.0
+flask-SQLAlchemy>=3.1
+SQLAlchemy>=2.0
+python-dateutil>=2.8.2
+Jinja2>=3.1
+Werkzeug>=3.0
+itsdangerous>=2.1
+MarkupSafe>=2.1
+gunicorn>=21.2
+# psycopg2-binary>=2.9   # فعّلها فقط إذا استخدمت PostgreSQL
