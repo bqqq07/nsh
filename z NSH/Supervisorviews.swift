@@ -482,6 +482,7 @@ struct MyRequestsView: View {
                         }
                         .listStyle(.plain)
                         .environment(\.layoutDirection, .rightToLeft)
+                        .refreshable { await load() }
                     }
                 }
             }
@@ -891,28 +892,29 @@ struct NewRequestView: View {
 //  MARK: - الرئيسية (مشرف)
 // ═══════════════════════════════════════════════════
 struct SupervisorHomeView: View {
-    @State private var employees:    [Employee] = []
-    @State private var weeklyDone:   Set<Int>   = []
-    @State private var isLoading     = true
+    var showQuickActions: Bool = false  // true لـ HSE Supervisor
+
+    @State private var employees:      [Employee] = []
+    @State private var weeklyDone:     Set<Int>   = []
+    @State private var isLoading       = true
+    @State private var pendingRequests = 0
+    @State private var showMyRequests  = false
+    @State private var showManagement  = false
 
     private var weekStart: Date { Date().previousSunday }
     private var weekEnd:   Date { Calendar.current.date(byAdding: .day, value: 4, to: weekStart) ?? weekStart }
 
-    // الموظفون غير المقيّمين هذا الأسبوع
     private var notEvaluated: [Employee] {
         employees.filter { !weeklyDone.contains($0.id) }
     }
 
-    // هل اقترب نهاية الأسبوع؟ — الأسبوع أحد(1)→خميس(5)، نُنبّه الأربعاء(4) والخميس(5) فقط
     private var isEndOfWeek: Bool {
         let weekday = Calendar.current.component(.weekday, from: Date())
-        // weekday: 1=أحد، 2=اثنين، 3=ثلاثاء، 4=أربعاء، 5=خميس، 6=جمعة، 7=سبت
         return weekday == 4 || weekday == 5
     }
 
     private var daysLeft: Int {
         let weekday = Calendar.current.component(.weekday, from: Date())
-        // الخميس(5) = 0 يوم، الأربعاء(4) = 1 يوم — الجمعة(6) وما بعدها لا تُحسب
         guard weekday == 4 || weekday == 5 else { return 0 }
         return max(0, 5 - weekday)
     }
@@ -923,9 +925,43 @@ struct SupervisorHomeView: View {
                 Color(hex: "#f0f4ff").ignoresSafeArea()
                 if isLoading {
                     ProgressView()
+                } else if employees.isEmpty {
+                    VStack(spacing: 16) {
+                        Spacer()
+                        Image(systemName: "person.2.slash")
+                            .font(.system(size: 52)).foregroundColor(.secondary.opacity(0.3))
+                        Text("لا يوجد موظفون في قائمتك")
+                            .font(.headline).foregroundColor(.secondary)
+                        Text("تواصل مع الأدمن لإضافة موظفين")
+                            .font(.caption).foregroundColor(.secondary)
+                        Spacer()
+                    }
                 } else {
                     ScrollView {
                         VStack(spacing: 16) {
+
+                            // P7 — بطاقات الملخص
+                            HStack(spacing: 10) {
+                                HomeStatCard(
+                                    title: "طلباتي المعلقة",
+                                    value: "\(pendingRequests)",
+                                    icon: "tray.full.fill",
+                                    color: Color(hex: "#f39c12")
+                                )
+                                HomeStatCard(
+                                    title: "الموظفون",
+                                    value: "\(employees.count)",
+                                    icon: "person.2.fill",
+                                    color: Color(hex: "#4f8ef7")
+                                )
+                                HomeStatCard(
+                                    title: "مقيَّمون",
+                                    value: "\(weeklyDone.count)/\(employees.count)",
+                                    icon: "checkmark.seal.fill",
+                                    color: Color(hex: "#2ecc71")
+                                )
+                            }
+                            .padding(.horizontal)
 
                             // ── تنبيه نهاية الأسبوع ──
                             if isEndOfWeek && !notEvaluated.isEmpty {
@@ -958,7 +994,7 @@ struct SupervisorHomeView: View {
                                 .padding(.horizontal)
                             }
 
-                            // ── إحصائيات الأسبوع ──
+                            // ── إحصائيات التقييم ──
                             HStack(spacing: 12) {
                                 StatMiniCard(
                                     title: "مقيَّمون",
@@ -1035,13 +1071,39 @@ struct SupervisorHomeView: View {
                         }
                         .padding(.top)
                     }
+                    .refreshable { await load() }
                 }
             }
             .navigationTitle("الرئيسية")
             .toolbar {
+                // أزرار الوصول السريع لـ HSE Supervisor (طلباتي + إدارة)
+                if showQuickActions {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        HStack(spacing: 14) {
+                            Button { showMyRequests = true } label: {
+                                Image(systemName: "doc.text.fill")
+                            }
+                            Button { showManagement = true } label: {
+                                Image(systemName: "person.badge.gear")
+                            }
+                        }
+                    }
+                } else {
+                    // إدارة الموظفين فقط للـ supervisor العادي (بدلاً عن tab منفصل)
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button { showManagement = true } label: {
+                            Image(systemName: "person.badge.gear")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
                 }
+            }
+            .sheet(isPresented: $showMyRequests) { MyRequestsView() }
+            .sheet(isPresented: $showManagement) {
+                NavigationView { EmployeeManagementView() }
+                    .environment(\.layoutDirection, .rightToLeft)
             }
         }
         .task { await load() }
@@ -1054,10 +1116,31 @@ struct SupervisorHomeView: View {
             let reports = try await NetworkManager.shared.getWeeklyReportsCached(
                 ws: weekStart.iso, we: weekEnd.iso)
             weeklyDone = Set(reports.map { $0.emp_id })
+            let reqs   = (try? await NetworkManager.shared.getMyRequestsCached()) ?? []
+            pendingRequests = reqs.filter { $0.status == "pending" }.count
         } catch {
             // أبق البيانات الموجودة عند خطأ مؤقت
         }
         isLoading = false
+    }
+}
+
+struct HomeStatCard: View {
+    let title: String
+    let value: String
+    let icon:  String
+    let color: Color
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon).font(.title3).foregroundColor(color)
+            Text(value)
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundColor(Color(hex: "#1a1f3a"))
+            Text(title).font(.caption2).foregroundColor(.secondary).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 12)
+        .background(Color.white).cornerRadius(14)
+        .shadow(color: color.opacity(0.1), radius: 5)
     }
 }
 

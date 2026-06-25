@@ -470,7 +470,7 @@ struct HSEObservationDetailView: View {
     @State private var showAlert     = false
     @Environment(\.dismiss) var dismiss
     private var isSupervisor: Bool {
-        let role = NetworkManager.shared.currentUser?.role ?? ""
+        let role = SessionManager.shared.currentUser?.role ?? ""
         return role == "admin" || role == "site_supervisor" || role == "supervisor"
     }
 
