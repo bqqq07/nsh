@@ -4770,8 +4770,7 @@ struct HSEReportPdfLayout: View {
             Rectangle().fill(dkBlue).frame(height: 2)
             kpiStrip
             Rectangle().fill(Color.gray.opacity(0.2)).frame(height: 0.5)
-            tableHeader
-            tableRows(prev: prev)
+            tableView
             Spacer(minLength: 16)
             pdfFooter
         }
@@ -4842,56 +4841,60 @@ struct HSEReportPdfLayout: View {
         .frame(maxWidth: .infinity).padding(.vertical, 4)
     }
 
-    // ── Table header ──────────────────────────────────────────────────
-    private var tableHeader: some View {
-        HStack(spacing: 0) {
-            pth("الاسم",  cNm,  leftPad: true)
-            pth("CI",     cCI)
-            pth("OBS",    cObs)
-            pth("UA",     cUA)
-            pth("UC",     cUC)
-            pth("POS",    cPos)
-            pth("H",      cH)
-            pth("JSO",    cJso)
-            pth("TBT",    cTbt)
-            pth("TBT👥",  cAtt)
-            pth("NM",     cNm2)
-            pth("BBS",    cBbs)
-            pth("Score",  cSco)
-            pth("▲▼",     cTrn)
-        }
-        .padding(.horizontal, 18)
-    }
-
-    // ── Table rows ────────────────────────────────────────────────────
-    private func tableRows(prev: [Int: HseReportRow]) -> some View {
-        VStack(spacing: 0) {
-            ForEach(rows) { row in
-                let p = prev[row.officer_id]
-                let t = trendInfo(cur: row.total_activity, prev: p?.total_activity ?? 0)
-                let bg = row.total_activity == 0 ? Color.red.opacity(0.06) : Color.clear
-                HStack(spacing: 0) {
-                    ptd(row.officer_name.components(separatedBy: " ").prefix(2).joined(separator: " "),
-                        cNm, .primary, left: true)
-                    ptd(row.checkin_days    > 0 ? "\(row.checkin_days)"    : "—", cCI,  row.checkin_days    > 0 ? Color(hex:"#0D7A5F") : .secondary)
-                    ptd(row.obs_total       > 0 ? "\(row.obs_total)"       : "—", cObs, row.obs_total       > 0 ? .blue   : .secondary)
-                    ptd(row.obs_unsafe_act  > 0 ? "\(row.obs_unsafe_act)"  : "—", cUA,  row.obs_unsafe_act  > 0 ? .red    : .secondary)
-                    ptd(row.obs_unsafe_cond > 0 ? "\(row.obs_unsafe_cond)" : "—", cUC,  row.obs_unsafe_cond > 0 ? .orange : .secondary)
-                    ptd(row.obs_positive    > 0 ? "\(row.obs_positive)"    : "—", cPos, row.obs_positive    > 0 ? .green  : .secondary)
-                    ptd(row.obs_high        > 0 ? "\(row.obs_high)"        : "—", cH,   row.obs_high        > 0 ? .red    : .secondary)
-                    ptd(row.jso             > 0 ? "\(row.jso)"             : "—", cJso, row.jso             > 0 ? .indigo : .secondary)
-                    ptd(row.tbt             > 0 ? "\(row.tbt)"             : "—", cTbt, row.tbt             > 0 ? .purple : .secondary)
-                    ptd(row.tbt_attendees   > 0 ? "\(row.tbt_attendees)"   : "—", cAtt, row.tbt_attendees   > 0 ? .purple : .secondary)
-                    ptd(row.nm              > 0 ? "\(row.nm)"              : "—", cNm2, row.nm              > 0 ? .red    : .secondary)
-                    ptd(row.bbs             > 0 ? "\(row.bbs)"             : "—", cBbs, row.bbs             > 0 ? .teal   : .secondary)
-                    pScore(row.score, cSco)
-                    ptd(t.symbol, cTrn, t.color)
+    // ── Table ─────────────────────────────────────────────────────────
+    private var tableView: some View {
+        let cols: [(String, CGFloat)] = [
+            ("الاسم", cNm), ("CI", cCI), ("OBS", cObs), ("UA", cUA),
+            ("UC", cUC), ("POS", cPos), ("H", cH), ("JSO", cJso),
+            ("TBT", cTbt), ("TBT👥", cAtt), ("NM", cNm2), ("BBS", cBbs),
+            ("Score", cSco), ("▲▼", cTrn)
+        ]
+        return VStack(spacing: 0) {
+            // header
+            HStack(spacing: 0) {
+                ForEach(cols, id: \.0) { (title, w) in
+                    Text(title)
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: w, height: 22, alignment: title == "الاسم" ? .leading : .center)
+                        .background(mdBlue)
+                        .border(dkBlue, width: 0.3)
                 }
-                .background(bg)
-                .padding(.horizontal, 18)
-                Rectangle().fill(Color.gray.opacity(0.15)).frame(height: 0.5).padding(.horizontal, 18)
+            }
+            // rows
+            ForEach(rows) { row in
+                let p = prevMap[row.officer_id]
+                let t = trendInfo(cur: row.total_activity, prev: p?.total_activity ?? 0)
+                HStack(spacing: 0) {
+                    cell(row.officer_name.components(separatedBy: " ").prefix(2).joined(separator: " "),
+                         cNm, .primary, align: .leading)
+                    cell(row.checkin_days    > 0 ? "\(row.checkin_days)"    : "—", cCI,  row.checkin_days    > 0 ? Color(hex:"#0D7A5F") : .secondary)
+                    cell(row.obs_total       > 0 ? "\(row.obs_total)"       : "—", cObs, row.obs_total       > 0 ? .blue   : .secondary)
+                    cell(row.obs_unsafe_act  > 0 ? "\(row.obs_unsafe_act)"  : "—", cUA,  row.obs_unsafe_act  > 0 ? .red    : .secondary)
+                    cell(row.obs_unsafe_cond > 0 ? "\(row.obs_unsafe_cond)" : "—", cUC,  row.obs_unsafe_cond > 0 ? .orange : .secondary)
+                    cell(row.obs_positive    > 0 ? "\(row.obs_positive)"    : "—", cPos, row.obs_positive    > 0 ? .green  : .secondary)
+                    cell(row.obs_high        > 0 ? "\(row.obs_high)"        : "—", cH,   row.obs_high        > 0 ? .red    : .secondary)
+                    cell(row.jso             > 0 ? "\(row.jso)"             : "—", cJso, row.jso             > 0 ? .indigo : .secondary)
+                    cell(row.tbt             > 0 ? "\(row.tbt)"             : "—", cTbt, row.tbt             > 0 ? .purple : .secondary)
+                    cell(row.tbt_attendees   > 0 ? "\(row.tbt_attendees)"   : "—", cAtt, row.tbt_attendees   > 0 ? .purple : .secondary)
+                    cell(row.nm              > 0 ? "\(row.nm)"              : "—", cNm2, row.nm              > 0 ? .red    : .secondary)
+                    cell(row.bbs             > 0 ? "\(row.bbs)"             : "—", cBbs, row.bbs             > 0 ? .teal   : .secondary)
+                    Text(String(format: "%.1f", row.score))
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(row.score >= 15 ? .green : row.score >= 8 ? .orange : .red)
+                        .frame(width: cSco, height: 20, alignment: .center)
+                        .border(Color.gray.opacity(0.2), width: 0.3)
+                    Text(t.symbol)
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(t.color)
+                        .frame(width: cTrn, height: 20, alignment: .center)
+                        .border(Color.gray.opacity(0.2), width: 0.3)
+                }
+                .background(row.total_activity == 0 ? Color.red.opacity(0.06) : Color.clear)
+                Rectangle().fill(Color.gray.opacity(0.12)).frame(height: 0.5)
             }
         }
+        .padding(.horizontal, 18)
     }
 
     // ── Footer ────────────────────────────────────────────────────────
@@ -4899,25 +4902,11 @@ struct HSEReportPdfLayout: View {
         Rectangle().fill(dkBlue).frame(height: 1).padding(.horizontal, 18)
     }
 
-    // ── Cell helpers ──────────────────────────────────────────────────
-    private func pth(_ txt: String, _ w: CGFloat, leftPad: Bool = false) -> some View {
-        Text(txt).font(.system(size: 7, weight: .bold)).foregroundColor(.white)
-            .padding(.leading, leftPad ? 4 : 0)
-            .frame(width: w, height: 22, alignment: leftPad ? .leading : .center)
-            .background(mdBlue).border(dkBlue, width: 0.3)
-    }
-
-    private func ptd(_ txt: String, _ w: CGFloat, _ color: Color = .primary, left: Bool = false) -> some View {
-        Text(txt).font(.system(size: 8)).foregroundColor(color)
-            .padding(.leading, left ? 4 : 0)
-            .frame(width: w, height: 20, alignment: left ? .leading : .center)
-            .border(Color.gray.opacity(0.2), width: 0.3)
-    }
-
-    private func pScore(_ score: Double, _ w: CGFloat) -> some View {
-        let c: Color = score >= 15 ? .green : score >= 8 ? .orange : .red
-        return Text(String(format: "%.1f", score)).font(.system(size: 8, weight: .bold))
-            .foregroundColor(c).frame(width: w, height: 20, alignment: .center)
+    private func cell(_ txt: String, _ w: CGFloat, _ color: Color = .primary, align: Alignment = .center) -> some View {
+        Text(txt)
+            .font(.system(size: 8))
+            .foregroundColor(color)
+            .frame(width: w, height: 20, alignment: align)
             .border(Color.gray.opacity(0.2), width: 0.3)
     }
 }
