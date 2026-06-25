@@ -63,6 +63,15 @@ struct RequestItem: Codable, Identifiable {
     let supervisor: SupervisorRef?
     let has_attachment: Bool?
     let official_reason: String?
+    // نموذج الإجازة
+    let has_leave_form: Bool?
+    let leave_signed: Bool?
+    let leave_pdf_url: String?
+    // استئذان
+    let permission_signed: Bool?
+    // إنذار
+    let warning_signed: Bool?
+    let warning_pdf_url: String?
 
     var statusColor: String {
         switch status {
@@ -81,7 +90,8 @@ struct RequestItem: Codable, Identifiable {
     var typeArabic: String {
         switch type {
         case "leave":      return "إجازة"
-        case "secondment": return "إعارة / سكليف"
+        case "sick":       return "سكليف"
+        case "secondment": return "إعارة"
         case "permission": return "استئذان"
         case "warning":    return "إنذار"
         case "late":       return "تأخر"
@@ -1323,6 +1333,69 @@ extension NetworkManager {
         if !completionNotes.isEmpty { body["completion_notes"] = completionNotes }
         let req = makeRequest("/api/hse/corrective_action/\(caId)", method: "PUT",
                               body: try JSONSerialization.data(withJSONObject: body))
+        let (data, resp) = try await session.data(for: req)
+        try hseCheck(resp, data: data)
+    }
+
+    // ── Requests: Leave & Permission Signing ─────────────────────────
+    struct LeaveFormInfo: Codable {
+        let request_id: Int
+        let employee_name: String
+        let emp_number: String
+        let department: String?
+        let site: String?
+        let supervisor: String?
+        let start_date: String
+        let end_date: String
+        let days: String
+        let reason: String?
+        let approved_at: String?
+        let has_form: Bool
+        let pdf_url: String?
+        let signed: Bool
+        let signed_at: String?
+        let signer_name: String?
+    }
+
+    struct PermissionFormInfo: Codable {
+        let request_id: Int
+        let employee_name: String
+        let emp_number: String
+        let department: String?
+        let supervisor: String?
+        let date: String
+        let reason: String?
+        let status: String
+        let signed: Bool
+        let signed_at: String?
+        let signer_name: String?
+        let pdf_url: String?
+    }
+
+    func leaveFormInfo(requestId: Int) async throws -> LeaveFormInfo {
+        let req = makeRequest("/api/leave/form/\(requestId)")
+        let (data, _) = try await session.data(for: req)
+        return try JSONDecoder().decode(LeaveFormInfo.self, from: data)
+    }
+
+    func leaveSign(requestId: Int, signature: String, employeeName: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "signature": signature, "employee_name": employeeName])
+        let req = makeRequest("/api/leave/sign/\(requestId)", method: "POST", body: body)
+        let (data, resp) = try await session.data(for: req)
+        try hseCheck(resp, data: data)
+    }
+
+    func permissionFormInfo(requestId: Int) async throws -> PermissionFormInfo {
+        let req = makeRequest("/api/permission/form/\(requestId)")
+        let (data, _) = try await session.data(for: req)
+        return try JSONDecoder().decode(PermissionFormInfo.self, from: data)
+    }
+
+    func permissionSign(requestId: Int, signature: String, employeeName: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "signature": signature, "employee_name": employeeName])
+        let req = makeRequest("/api/permission/sign/\(requestId)", method: "POST", body: body)
         let (data, resp) = try await session.data(for: req)
         try hseCheck(resp, data: data)
     }

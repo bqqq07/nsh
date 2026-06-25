@@ -517,7 +517,9 @@ struct MyRequestsView: View {
 
 struct RequestCard: View {
     let request: RequestItem
-    @State private var showWarningForm = false
+    @State private var showWarningForm    = false
+    @State private var showLeaveForm      = false
+    @State private var showPermissionForm = false
 
     var statusColor: Color {
         switch request.status {
@@ -533,21 +535,35 @@ struct RequestCard: View {
         let sent     = true
         let approved = request.status == "approved" || request.status == "rejected"
         let atHR     = request.status == "approved"
-        let hrDone   = request.status == "approved" && (request.type != "warning" || request.official_reason != nil)
+        let hrDone: Bool = {
+            switch request.type {
+            case "warning":    return approved && request.official_reason != nil
+            case "leave":      return approved && (request.leave_signed == true)
+            case "permission": return approved && (request.permission_signed == true)
+            default:           return atHR
+            }
+        }()
 
-        if request.type == "warning" {
-            return [
-                ("أُرسل",        "paperplane.fill",         sent),
-                ("قرار الإدارة", "checkmark.shield.fill",   approved),
-                ("لدى HR",       "person.badge.clock.fill", atHR),
-                ("جاهز للتوقيع","signature",                hrDone),
-            ]
-        } else {
-            return [
-                ("أُرسل",        "paperplane.fill",       sent),
-                ("قرار الإدارة", "checkmark.shield.fill", approved),
-                ("لدى HR",       "person.badge.clock.fill", atHR),
-            ]
+        switch request.type {
+        case "warning":
+            return [("أُرسل","paperplane.fill",sent),
+                    ("قرار الإدارة","checkmark.shield.fill",approved),
+                    ("لدى HR","person.badge.clock.fill",atHR),
+                    ("جاهز للتوقيع","signature",hrDone)]
+        case "leave":
+            return [("أُرسل","paperplane.fill",sent),
+                    ("موافقة","checkmark.shield.fill",approved),
+                    ("لدى HR","person.badge.clock.fill",atHR),
+                    ("وقّع النموذج","signature",hrDone)]
+        case "permission":
+            return [("أُرسل","paperplane.fill",sent),
+                    ("قرار الإدارة","checkmark.shield.fill",approved),
+                    ("لدى HR","person.badge.clock.fill",atHR),
+                    ("وقّع النموذج","signature",hrDone)]
+        default:
+            return [("أُرسل","paperplane.fill",sent),
+                    ("قرار الإدارة","checkmark.shield.fill",approved),
+                    ("لدى HR","person.badge.clock.fill",atHR)]
         }
     }
 
@@ -607,29 +623,74 @@ struct RequestCard: View {
             }
             .padding(.vertical, 4)
 
-            // ── زر نموذج الإنذار ──
-            if request.type == "warning" && request.status == "approved" {
-                if request.official_reason != nil {
-                    Button { showWarningForm = true } label: {
-                        HStack {
-                            Image(systemName: "doc.text.fill")
-                            Text("فتح نموذج الإنذار").fontWeight(.semibold)
+            // ── أزرار النماذج حسب النوع ──
+            if request.status == "approved" {
+                // إجازة
+                if request.type == "leave" {
+                    if request.has_leave_form == true {
+                        Button { showLeaveForm = true } label: {
+                            HStack {
+                                Image(systemName: request.leave_signed == true ? "checkmark.seal.fill" : "signature")
+                                Text(request.leave_signed == true ? "عرض نموذج الإجازة" : "وقّع نموذج الإجازة")
+                                    .fontWeight(.semibold)
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .background((request.leave_signed == true ? Color(hex: "#2ecc71") : Color(hex: "#2563eb")).opacity(0.12))
+                            .foregroundColor(request.leave_signed == true ? Color(hex: "#2ecc71") : Color(hex: "#2563eb"))
+                            .cornerRadius(10)
                         }
-                        .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(Color(hex: "#e74c3c").opacity(0.12))
-                        .foregroundColor(Color(hex: "#e74c3c")).cornerRadius(10)
+                        .sheet(isPresented: $showLeaveForm) { LeaveFormView(requestId: request.id) }
                     }
-                    .sheet(isPresented: $showWarningForm) {
-                        WarningFormView(requestId: request.id)
-                    }
-                } else {
+                }
+                // سكليف
+                else if request.type == "sick" {
                     HStack(spacing: 6) {
-                        Image(systemName: "clock.fill").foregroundColor(.orange)
-                        Text("في انتظار تحديد السبب الرسمي من HR")
+                        Image(systemName: "cross.case.fill").foregroundColor(Color(hex: "#e74c3c"))
+                        Text("سكليف — تم تسجيل الغياب تلقائياً")
                             .font(.caption).foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 7).background(Color(hex: "#fff3cd")).cornerRadius(8)
+                    .padding(.vertical, 7).background(Color(hex: "#fdecea")).cornerRadius(8)
+                }
+                // استئذان
+                else if request.type == "permission" {
+                    Button { showPermissionForm = true } label: {
+                        HStack {
+                            Image(systemName: request.permission_signed == true ? "checkmark.seal.fill" : "signature")
+                            Text(request.permission_signed == true ? "عرض نموذج الاستئذان" : "وقّع نموذج الاستئذان")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background((request.permission_signed == true ? Color(hex: "#2ecc71") : Color(hex: "#f39c12")).opacity(0.12))
+                        .foregroundColor(request.permission_signed == true ? Color(hex: "#2ecc71") : Color(hex: "#f39c12"))
+                        .cornerRadius(10)
+                    }
+                    .sheet(isPresented: $showPermissionForm) { PermissionFormView(requestId: request.id) }
+                }
+                // إنذار
+                else if request.type == "warning" {
+                    if request.official_reason != nil {
+                        Button { showWarningForm = true } label: {
+                            HStack {
+                                Image(systemName: request.warning_signed == true ? "checkmark.seal.fill" : "doc.text.fill")
+                                Text(request.warning_signed == true ? "عرض نموذج الإنذار" : "فتح نموذج الإنذار")
+                                    .fontWeight(.semibold)
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 8)
+                            .background((request.warning_signed == true ? Color(hex: "#2ecc71") : Color(hex: "#e74c3c")).opacity(0.12))
+                            .foregroundColor(request.warning_signed == true ? Color(hex: "#2ecc71") : Color(hex: "#e74c3c"))
+                            .cornerRadius(10)
+                        }
+                        .sheet(isPresented: $showWarningForm) { WarningFormView(requestId: request.id) }
+                    } else {
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock.fill").foregroundColor(.orange)
+                            Text("في انتظار تحديد السبب الرسمي من HR")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 7).background(Color(hex: "#fff3cd")).cornerRadius(8)
+                    }
                 }
             }
         }
@@ -658,7 +719,7 @@ struct NewRequestView: View {
     @State private var isSaving    = false
     @State private var errorMsg    = ""
 
-    let types = [("leave","إجازة"),("secondment","سكليف / إعارة"),
+    let types = [("leave","إجازة"),("sick","سكليف"),("secondment","إعارة"),
                  ("permission","استئذان"),("warning","إنذار"),("late","تأخر")]
 
     var finalReason: String { reason }
@@ -684,12 +745,21 @@ struct NewRequestView: View {
                     }
                     .pickerStyle(.menu)
                 }
-                if reqType == "leave" || reqType == "secondment" {
+                if ["leave","sick","secondment"].contains(reqType) {
                     Section("التواريخ") {
                         DatePicker("من",  selection: $startDate, displayedComponents: .date)
                             .environment(\.locale, Locale(identifier: "ar_SA"))
                         DatePicker("إلى", selection: $endDate,   displayedComponents: .date)
                             .environment(\.locale, Locale(identifier: "ar_SA"))
+                    }
+                }
+                if reqType == "sick" {
+                    Section {
+                        HStack(spacing: 6) {
+                            Image(systemName: "info.circle.fill").foregroundColor(.blue)
+                            Text("سيتم تسجيل الغياب تلقائياً بعد الموافقة")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
                     }
                 }
 
@@ -739,8 +809,8 @@ struct NewRequestView: View {
             do {
                 let ok = try await NetworkManager.shared.submitRequest(
                     employeeId: emp.id, type: reqType, reason: reason,
-                    startDate: reqType == "leave" || reqType == "secondment" ? startDate.iso : nil,
-                    endDate:   reqType == "leave" || reqType == "secondment" ? endDate.iso   : nil,
+                    startDate: ["leave","sick","secondment"].contains(reqType) ? startDate.iso : nil,
+                    endDate:   ["leave","sick","secondment"].contains(reqType) ? endDate.iso   : nil,
                     pdfData: nil, pdfName: nil)
                 if ok { onDone?(); dismiss() }
                 else  { errorMsg = "حدث خطأ في الإرسال" }
@@ -1496,6 +1566,268 @@ struct WarningFormRow: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         Divider().padding(.horizontal)
+    }
+}
+
+// ═══════════════════════════════════════════════════
+// MARK: - نموذج الإجازة
+// ═══════════════════════════════════════════════════
+struct LeaveFormView: View {
+    let requestId: Int
+    @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var session: SessionManager
+    @State private var info: NetworkManager.LeaveFormInfo? = nil
+    @State private var isLoading    = true
+    @State private var showSign     = false
+    @State private var signedOK     = false
+    @State private var errorMsg     = ""
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(hex: "#f8f9fa").ignoresSafeArea()
+                if isLoading {
+                    ProgressView()
+                } else if let f = info {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            // رأس
+                            VStack(spacing: 6) {
+                                AsyncImage(url: URL(string: "\(BASE_URL)/logo")) { img in
+                                    img.resizable().scaledToFit().frame(height: 56)
+                                } placeholder: {
+                                    Image(systemName: "building.2.fill")
+                                        .font(.largeTitle).foregroundColor(Color(hex: "#2563eb"))
+                                }
+                                Text("نموذج طلب إجازة").font(.title2.bold())
+                                Text("LEAVE REQUEST FORM").font(.caption).foregroundColor(.secondary)
+                                Divider().padding(.top, 4)
+                            }
+                            .padding().background(Color.white)
+
+                            // بيانات
+                            VStack(spacing: 0) {
+                                WarningFormRow(label: "اسم الموظف",    value: f.employee_name)
+                                WarningFormRow(label: "رقم الموظف",    value: f.emp_number)
+                                if let dept = f.department, !dept.isEmpty {
+                                    WarningFormRow(label: "القسم",     value: dept)
+                                }
+                                if let site = f.site, !site.isEmpty {
+                                    WarningFormRow(label: "الموقع",    value: site)
+                                }
+                                if let sup = f.supervisor, !sup.isEmpty {
+                                    WarningFormRow(label: "المشرف",    value: sup)
+                                }
+                                WarningFormRow(label: "من",            value: f.start_date)
+                                WarningFormRow(label: "إلى",           value: f.end_date)
+                                WarningFormRow(label: "عدد الأيام",    value: f.days)
+                                if let reason = f.reason, !reason.isEmpty {
+                                    WarningFormRow(label: "السبب",     value: reason)
+                                }
+                                if let ap = f.approved_at, !ap.isEmpty {
+                                    WarningFormRow(label: "تاريخ الموافقة", value: ap)
+                                }
+                            }
+                            .background(Color.white).cornerRadius(12)
+                            .shadow(color: .black.opacity(0.05), radius: 6).padding()
+
+                            // التوقيع
+                            VStack(spacing: 12) {
+                                if f.signed || signedOK {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: "checkmark.seal.fill")
+                                            .font(.largeTitle).foregroundColor(Color(hex: "#2ecc71"))
+                                        Text("تم التوقيع ✓").font(.headline)
+                                            .foregroundColor(Color(hex: "#2ecc71"))
+                                        if let at = f.signed_at {
+                                            Text(at.prefix(16)).font(.caption).foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .padding().frame(maxWidth: .infinity)
+                                    .background(Color(hex: "#d5f5e3")).cornerRadius(12)
+
+                                    // زر تحميل PDF
+                                    if let url = f.pdf_url {
+                                        Link(destination: URL(string: "\(BASE_URL)\(url)?token=\(SessionManager.shared.token ?? "")")!) {
+                                            HStack {
+                                                Image(systemName: "arrow.down.doc.fill")
+                                                Text("تحميل PDF")
+                                            }
+                                            .frame(maxWidth: .infinity).padding()
+                                            .background(Color(hex: "#2563eb"))
+                                            .foregroundColor(.white).cornerRadius(12)
+                                        }
+                                    }
+                                } else {
+                                    Button { showSign = true } label: {
+                                        HStack {
+                                            Image(systemName: "signature")
+                                            Text("توقيع الموظف").fontWeight(.bold)
+                                        }
+                                        .frame(maxWidth: .infinity).padding()
+                                        .background(Color(hex: "#2563eb"))
+                                        .foregroundColor(.white).cornerRadius(14)
+                                    }
+                                }
+                                if !errorMsg.isEmpty {
+                                    Text(errorMsg).font(.caption).foregroundColor(.red)
+                                }
+                            }
+                            .padding()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("نموذج الإجازة")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarLeading) { Button("إغلاق") { dismiss() } } }
+            .sheet(isPresented: $showSign) {
+                SignaturePadView { sig64 in
+                    showSign = false
+                    Task {
+                        do {
+                            let name = session.currentUser?.name ?? ""
+                            try await NetworkManager.shared.leaveSign(requestId: requestId, signature: sig64, employeeName: name)
+                            signedOK = true
+                            await load()
+                        } catch {
+                            errorMsg = "فشل حفظ التوقيع"
+                        }
+                    }
+                }
+                .ignoresSafeArea()
+            }
+        }
+        .task { await load() }
+    }
+    private func load() async {
+        isLoading = true
+        info = try? await NetworkManager.shared.leaveFormInfo(requestId: requestId)
+        isLoading = false
+    }
+}
+
+// ═══════════════════════════════════════════════════
+// MARK: - نموذج الاستئذان
+// ═══════════════════════════════════════════════════
+struct PermissionFormView: View {
+    let requestId: Int
+    @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var session: SessionManager
+    @State private var info: NetworkManager.PermissionFormInfo? = nil
+    @State private var isLoading = true
+    @State private var showSign  = false
+    @State private var signedOK  = false
+    @State private var errorMsg  = ""
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(hex: "#f8f9fa").ignoresSafeArea()
+                if isLoading {
+                    ProgressView()
+                } else if let f = info {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            VStack(spacing: 6) {
+                                AsyncImage(url: URL(string: "\(BASE_URL)/logo")) { img in
+                                    img.resizable().scaledToFit().frame(height: 56)
+                                } placeholder: {
+                                    Image(systemName: "building.2.fill")
+                                        .font(.largeTitle).foregroundColor(Color(hex: "#2563eb"))
+                                }
+                                Text("نموذج استئذان").font(.title2.bold())
+                                Text("PERMISSION FORM").font(.caption).foregroundColor(.secondary)
+                                Divider().padding(.top, 4)
+                            }
+                            .padding().background(Color.white)
+
+                            VStack(spacing: 0) {
+                                WarningFormRow(label: "اسم الموظف", value: f.employee_name)
+                                WarningFormRow(label: "رقم الموظف", value: f.emp_number)
+                                if let dept = f.department, !dept.isEmpty {
+                                    WarningFormRow(label: "القسم", value: dept)
+                                }
+                                if let sup = f.supervisor, !sup.isEmpty {
+                                    WarningFormRow(label: "المشرف", value: sup)
+                                }
+                                WarningFormRow(label: "التاريخ", value: f.date)
+                                if let reason = f.reason, !reason.isEmpty {
+                                    WarningFormRow(label: "السبب", value: reason)
+                                }
+                            }
+                            .background(Color.white).cornerRadius(12)
+                            .shadow(color: .black.opacity(0.05), radius: 6).padding()
+
+                            VStack(spacing: 12) {
+                                if f.signed || signedOK {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: "checkmark.seal.fill")
+                                            .font(.largeTitle).foregroundColor(Color(hex: "#2ecc71"))
+                                        Text("تم التوقيع ✓").font(.headline)
+                                            .foregroundColor(Color(hex: "#2ecc71"))
+                                        if let at = f.signed_at { Text(at.prefix(16)).font(.caption).foregroundColor(.secondary) }
+                                    }
+                                    .padding().frame(maxWidth: .infinity)
+                                    .background(Color(hex: "#d5f5e3")).cornerRadius(12)
+
+                                    if let url = f.pdf_url {
+                                        Link(destination: URL(string: "\(BASE_URL)\(url)?token=\(SessionManager.shared.token ?? "")")!) {
+                                            HStack {
+                                                Image(systemName: "arrow.down.doc.fill")
+                                                Text("تحميل PDF")
+                                            }
+                                            .frame(maxWidth: .infinity).padding()
+                                            .background(Color(hex: "#2563eb"))
+                                            .foregroundColor(.white).cornerRadius(12)
+                                        }
+                                    }
+                                } else {
+                                    Button { showSign = true } label: {
+                                        HStack {
+                                            Image(systemName: "signature")
+                                            Text("توقيع الموظف").fontWeight(.bold)
+                                        }
+                                        .frame(maxWidth: .infinity).padding()
+                                        .background(Color(hex: "#f39c12"))
+                                        .foregroundColor(.white).cornerRadius(14)
+                                    }
+                                }
+                                if !errorMsg.isEmpty {
+                                    Text(errorMsg).font(.caption).foregroundColor(.red)
+                                }
+                            }
+                            .padding()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("نموذج الاستئذان")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarLeading) { Button("إغلاق") { dismiss() } } }
+            .sheet(isPresented: $showSign) {
+                SignaturePadView { sig64 in
+                    showSign = false
+                    Task {
+                        do {
+                            let name = session.currentUser?.name ?? ""
+                            try await NetworkManager.shared.permissionSign(requestId: requestId, signature: sig64, employeeName: name)
+                            signedOK = true
+                            await load()
+                        } catch {
+                            errorMsg = "فشل حفظ التوقيع"
+                        }
+                    }
+                }
+                .ignoresSafeArea()
+            }
+        }
+        .task { await load() }
+    }
+    private func load() async {
+        isLoading = true
+        info = try? await NetworkManager.shared.permissionFormInfo(requestId: requestId)
+        isLoading = false
     }
 }
 
