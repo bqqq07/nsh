@@ -106,13 +106,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
     }
 
-    // تحديث badge + صفّر الإشعارات المُسلَّمة عند فتح التطبيق
+    // صفّر الـ badge فوراً عند فتح التطبيق
     func applicationDidBecomeActive(_ application: UIApplication) {
+        UIApplication.shared.applicationIconBadgeNumber = 0
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
-        Task {
-            await OfflineQueue.shared.syncAll()
-            await AppDelegate.updateBadge()
-        }
+        Task { await OfflineQueue.shared.syncAll() }
     }
 
     // جلب عدد الطلبات المعلقة من السيرفر وتحديث الـ badge

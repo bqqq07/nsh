@@ -178,7 +178,7 @@ struct SupervisorTabView: View {
     }
 
     private func loadBadge() async {
-        let reqs = (try? await NetworkManager.shared.getMyRequestsCached()) ?? []
+        let reqs = (try? await NetworkManager.shared.getMyRequests()) ?? []
         pendingCount = reqs.filter { $0.status == "pending" }.count
     }
 }

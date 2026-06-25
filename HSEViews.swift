@@ -2422,7 +2422,8 @@ private struct HSEReportTable: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 0) {
-                        rth("الاسم",  120)
+                        Text("الاسم").frame(width: 120, alignment: .leading)
+                            .font(.caption.bold()).foregroundColor(.white).padding(.leading, 6)
                         rth("CI",      36)
                         rth("OBS",     38)
                         rth("UA",      32)
