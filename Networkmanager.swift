@@ -291,18 +291,6 @@ class NetworkManager {
         return req
     }
 
-    func saCreateCompanyPublic(name: String, email: String, password: String) async throws {
-        let body: [String: Any] = ["name": name, "email": email, "password": password]
-        let data = try JSONSerialization.data(withJSONObject: body)
-        var req = makeRequest("/api/sa/company/public", method: "POST", body: data)
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let (respData, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 201 else {
-            let msg = (try? JSONDecoder().decode([String: String].self, from: respData))?["error"] ?? "فشل إنشاء الشركة"
-            throw NSError(domain: "NSH", code: 0, userInfo: [NSLocalizedDescriptionKey: msg])
-        }
-    }
-
     func login(code: String, deviceToken: String? = nil) async throws -> LoginResponse {
         var body: [String: Any] = ["code": code]
         if let dt = deviceToken { body["device_token"] = dt }
