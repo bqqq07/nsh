@@ -99,6 +99,10 @@ try:
 except ImportError:
     pass  # Flask-WTF not installed yet — run: pip install Flask-WTF
 
+# Ensure csrf_token is always available in templates even if Flask-WTF failed
+if 'csrf_token' not in app.jinja_env.globals:
+    app.jinja_env.globals['csrf_token'] = lambda: ''
+
 # ── Rate Limiter ─────────────────────────────────────────────────────
 try:
     from flask_limiter import Limiter
