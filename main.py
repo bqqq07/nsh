@@ -31,7 +31,7 @@ if not _secret:
     _secret = _secrets.token_hex(32)
     import logging as _logging
     _logging.getLogger(__name__).warning(
-        "SECRET_KEY not set in environment — using a random key. "
+        "SECRET_KEY not set in environment -- using a random key. "
         "Sessions will not survive restarts. Set SECRET_KEY in your .env file."
     )
 app.config["SECRET_KEY"] = _secret
@@ -8665,92 +8665,6 @@ def hse_officer_detail_pdf(officer_id):
     return resp
 
 
-@app.get("/api/hse/officer/<int:officer_id>/pdf")
-@api_hse_supervisor_required
-def api_hse_officer_pdf(officer_id):
-    """PDF officer report — Bearer token auth for iOS."""
-    import io
-    from flask import make_response
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-
-    officer = User.query.filter_by(id=officer_id, role="safety_officer").first_or_404()
-    date_from = _safe_date(freq.args.get("from"))
-    date_to   = _safe_date(freq.args.get("to"))
-    checkins, observations, jsos, tbts, nearmisses, bbs_list = _collect_officer_data(officer_id, date_from, date_to)
-    _att_ids = [t.id for t in tbts]
-    _att_map = dict(
-        db.session.query(HseTbtAttendance.tbt_id, func.count())
-        .filter(HseTbtAttendance.tbt_id.in_(_att_ids))
-        .group_by(HseTbtAttendance.tbt_id).all()
-    ) if _att_ids else {}
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4,
-                            leftMargin=12*mm, rightMargin=12*mm,
-                            topMargin=14*mm, bottomMargin=14*mm)
-    styles = getSampleStyleSheet()
-    h1  = ParagraphStyle("h1",  parent=styles["Heading1"], fontSize=14, spaceAfter=2)
-    sub = ParagraphStyle("sub", parent=styles["Normal"],   fontSize=9,  spaceAfter=10,
-                         textColor=colors.HexColor("#6B7280"))
-    h2  = ParagraphStyle("h2",  parent=styles["Heading2"], fontSize=11, spaceBefore=10, spaceAfter=4)
-    hdr_fill = colors.HexColor("#0F172A")
-    alt_fill = colors.HexColor("#F9FAFB")
-
-    def _tbl(header, rows, col_widths):
-        data = [header] + (rows if rows else [["—"] * len(header)])
-        t = Table(data, colWidths=col_widths, repeatRows=1)
-        style = TableStyle([
-            ("BACKGROUND",  (0,0), (-1,0), hdr_fill),
-            ("TEXTCOLOR",   (0,0), (-1,0), colors.white),
-            ("FONTSIZE",    (0,0), (-1,0), 9),
-            ("FONTSIZE",    (0,1), (-1,-1), 8),
-            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, alt_fill]),
-            ("GRID",        (0,0), (-1,-1), 0.4, colors.HexColor("#E5E7EB")),
-            ("LEFTPADDING",  (0,0), (-1,-1), 5),
-            ("RIGHTPADDING", (0,0), (-1,-1), 5),
-            ("TOPPADDING",   (0,0), (-1,-1), 3),
-            ("BOTTOMPADDING",(0,0), (-1,-1), 3),
-        ])
-        t.setStyle(style)
-        return t
-
-    content = [
-        Paragraph(f"HSE Officer Report — {officer.name}", h1),
-        Paragraph(f"Period: {date_from or 'All time'} → {date_to or 'Today'}", sub),
-        Spacer(1, 4*mm),
-        Paragraph("Check-in History", h2),
-        _tbl(["Date","Location","Time"],
-             [[str(c.date), c.location or "—", str(c.created_at)[:10]] for c in checkins],
-             [40*mm, 80*mm, 40*mm]),
-        Spacer(1, 4*mm),
-        Paragraph("Observations", h2),
-        _tbl(["Date","Type","Category","Risk","Status"],
-             [[str(o.date), o.obs_type or "—", o.category or "—", o.risk_level or "—", o.status]
-              for o in observations],
-             [28*mm, 32*mm, 36*mm, 20*mm, 24*mm]),
-        Spacer(1, 4*mm),
-        Paragraph("TBT Sessions", h2),
-        _tbl(["Date","Topic","Location","Attendees"],
-             [[str(t.date), (t.topic or "—")[:40], t.location or "—",
-               str(_att_map.get(t.id, 0))] for t in tbts],
-             [25*mm, 70*mm, 45*mm, 20*mm]),
-        Spacer(1, 4*mm),
-        Paragraph("Near Miss", h2),
-        _tbl(["Date","Location","Description"],
-             [[str(n.date), n.location or "—", (n.description or "—")[:60]] for n in nearmisses],
-             [25*mm, 40*mm, 95*mm]),
-    ]
-    doc.build(content)
-    buf.seek(0)
-    resp = make_response(buf.read())
-    resp.headers["Content-Type"] = "application/pdf"
-    resp.headers["Content-Disposition"] = f"attachment; filename=officer_{officer_id}_report.pdf"
-    return resp
-
 
 # ===================== HSE Monthly Report =====================
 
@@ -9632,6 +9546,92 @@ def api_hse_supervisor_required(f):
             return jsonify({"error": "Forbidden"}), 403
         return f(*args, **kwargs)
     return wrapper
+
+
+@app.get("/api/hse/officer/<int:officer_id>/pdf")
+@api_hse_supervisor_required
+def api_hse_officer_pdf(officer_id):
+    """PDF officer report via Bearer token (iOS)."""
+    import io
+    from flask import make_response
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    officer = User.query.filter_by(id=officer_id, role="safety_officer").first_or_404()
+    date_from = _safe_date(freq.args.get("from"))
+    date_to   = _safe_date(freq.args.get("to"))
+    checkins, observations, jsos, tbts, nearmisses, bbs_list = _collect_officer_data(officer_id, date_from, date_to)
+    _att_ids = [t.id for t in tbts]
+    _att_map = dict(
+        db.session.query(HseTbtAttendance.tbt_id, func.count())
+        .filter(HseTbtAttendance.tbt_id.in_(_att_ids))
+        .group_by(HseTbtAttendance.tbt_id).all()
+    ) if _att_ids else {}
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=12*mm, rightMargin=12*mm,
+                            topMargin=14*mm, bottomMargin=14*mm)
+    styles = getSampleStyleSheet()
+    h1  = ParagraphStyle("h1",  parent=styles["Heading1"], fontSize=14, spaceAfter=2)
+    sub = ParagraphStyle("sub", parent=styles["Normal"],   fontSize=9,  spaceAfter=10,
+                         textColor=colors.HexColor("#6B7280"))
+    h2  = ParagraphStyle("h2",  parent=styles["Heading2"], fontSize=11, spaceBefore=10, spaceAfter=4)
+    hdr_fill = colors.HexColor("#0F172A")
+    alt_fill = colors.HexColor("#F9FAFB")
+
+    def _tbl(header, rows, col_widths):
+        data = [header] + (rows if rows else [["-"] * len(header)])
+        t = Table(data, colWidths=col_widths, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND",  (0,0), (-1,0), hdr_fill),
+            ("TEXTCOLOR",   (0,0), (-1,0), colors.white),
+            ("FONTSIZE",    (0,0), (-1,0), 9),
+            ("FONTSIZE",    (0,1), (-1,-1), 8),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, alt_fill]),
+            ("GRID",        (0,0), (-1,-1), 0.4, colors.HexColor("#E5E7EB")),
+            ("LEFTPADDING",  (0,0), (-1,-1), 5),
+            ("RIGHTPADDING", (0,0), (-1,-1), 5),
+            ("TOPPADDING",   (0,0), (-1,-1), 3),
+            ("BOTTOMPADDING",(0,0), (-1,-1), 3),
+        ]))
+        return t
+
+    content = [
+        Paragraph("HSE Officer Report - " + officer.name, h1),
+        Paragraph("Period: " + str(date_from or "All time") + " to " + str(date_to or "Today"), sub),
+        Spacer(1, 4*mm),
+        Paragraph("Check-in History", h2),
+        _tbl(["Date","Location","Time"],
+             [[str(c.date), c.location or "-", str(c.created_at)[:10]] for c in checkins],
+             [40*mm, 80*mm, 40*mm]),
+        Spacer(1, 4*mm),
+        Paragraph("Observations", h2),
+        _tbl(["Date","Type","Category","Risk","Status"],
+             [[str(o.date), o.obs_type or "-", o.category or "-", o.risk_level or "-", o.status]
+              for o in observations],
+             [28*mm, 32*mm, 36*mm, 20*mm, 24*mm]),
+        Spacer(1, 4*mm),
+        Paragraph("TBT Sessions", h2),
+        _tbl(["Date","Topic","Location","Attendees"],
+             [[str(t.date), (t.topic or "-")[:40], t.location or "-",
+               str(_att_map.get(t.id, 0))] for t in tbts],
+             [25*mm, 70*mm, 45*mm, 20*mm]),
+        Spacer(1, 4*mm),
+        Paragraph("Near Miss", h2),
+        _tbl(["Date","Location","Description"],
+             [[str(n.date), n.location or "-", (n.description or "-")[:60]] for n in nearmisses],
+             [25*mm, 40*mm, 95*mm]),
+    ]
+    doc.build(content)
+    buf.seek(0)
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = f"attachment; filename=officer_{officer_id}_report.pdf"
+    return resp
 
 
 # ── API: Weekly Report JSON (for iOS) ────────────────────────────────
