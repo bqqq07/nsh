@@ -3975,9 +3975,13 @@ class LeaveForm(db.Model):
 # ─────────────────────────────────────────────
 def get_api_user():
     auth = freq.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
+    if auth.startswith("Bearer "):
+        token_str = auth[7:]
+    else:
+        # قبول التوكن من query parameter (لفتح الملفات في Safari)
+        token_str = freq.args.get("token", "")
+    if not token_str:
         return None
-    token_str = auth[7:]
     tok = MobileToken.query.filter_by(token=token_str).first()
     return tok.user if tok else None
 
