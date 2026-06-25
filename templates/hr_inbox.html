@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>صندوق الموارد البشرية</h1>
+
+<section class="card">
+  <div class="table-wrap">
+    <table class="table compact" style="direction:rtl">
+      <colgroup>
+        <col style="width:70px">
+        <col style="width:110px">
+        <col style="width:200px">
+        <col style="width:200px">
+        <col style="width:180px">
+        <col style="width:110px">
+        <col style="width:200px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>النوع</th>
+          <th>الموظف</th>
+          <th>السبب</th>
+          <th>التواريخ</th>
+          <th>الحالة</th>
+          <th class="no-print">الإجراء</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set type_map = {'leave':'إجازة','sick':'سكليف','permission':'استئذان','warning':'إنذار','secondment':'إعارة','late':'تأخر','other':'أخرى'} %}
+        {% for t in rows %}
+        {% set r = t.request %}
+        <tr>
+          <td class="mono">{{ t.id }}</td>
+          <td>
+            <span class="badge {{ 'primary' if t.type=='leave' else ('warning' if t.type in ('permission','sick') else ('danger' if t.type=='warning' else '')) }}">
+              {{ type_map.get(t.type, t.type) }}
+            </span>
+          </td>
+          <td>
+            {{ t.employee.name if t.employee else '—' }}
+            {% if t.employee %}<span class="muted mono"> ({{ t.employee.emp_number }})</span>{% endif %}
+          </td>
+          <td>{{ r.reason if r and r.reason else '—' }}</td>
+          <td class="mono">
+            {% if r and (r.start_date or r.end_date) %}
+              {{ r.start_date or '—' }} → {{ r.end_date or '—' }}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <span class="badge {{ 'success' if t.status=='applied' else 'warning' }}">
+              {{ 'مُطبَّق' if t.status=='applied' else 'معلق' }}
+            </span>
+          </td>
+          <td class="no-print">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              {% if t.status == 'pending' %}
+              <form method="post" action="{{ url_for('hr_task_apply', task_id=t.id) }}" style="margin:0">
+                <button class="btn success" style="font-size:12px" onclick="return confirm('تأكيد التطبيق؟')">تطبيق ✓</button>
+              </form>
+              {% endif %}
+
+              {% if r %}
+                {% if t.type == 'leave' and r.leave_form %}
+                  {% if r.leave_form.signed %}
+                    <a href="{{ url_for('web_leave_pdf', req_id=r.id) }}" class="btn" style="font-size:12px;background:#2563eb;color:#fff" target="_blank">⬇ PDF الإجازة</a>
+                  {% else %}
+                    <span class="muted" style="font-size:12px">⏳ في انتظار توقيع الموظف</span>
+                  {% endif %}
+                {% elif t.type == 'permission' %}
+                  <a href="{{ url_for('web_permission_sign', req_id=r.id) }}" class="btn" style="font-size:12px;background:#f39c12;color:#fff">📄 نموذج الاستئذان</a>
+                {% elif t.type == 'warning' %}
+                  <a href="/requests/{{ r.id }}/leave-sign"
+                     class="btn danger" style="font-size:12px">📄 نموذج الإنذار</a>
+                {% elif t.type == 'sick' %}
+                  <span class="muted" style="font-size:12px">✓ غياب مُسجَّل تلقائياً</span>
+                {% endif %}
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="center muted">لا توجد مهام بعد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

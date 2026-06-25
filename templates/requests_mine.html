@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>طلباتي</h1>
+
+<section class="card">
+  <div class="table-wrap">
+    <table class="table compact" style="direction:rtl">
+      <colgroup>
+        <col style="width:80px">
+        <col style="width:160px">
+        <col style="width:200px">
+        <col style="width:110px">
+        <col style="width:200px">
+        <col style="width:120px">
+        <col style="width:220px">
+        <col style="width:160px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>التاريخ</th>
+          <th>الموظف</th>
+          <th>النوع</th>
+          <th>التواريخ</th>
+          <th>الحالة</th>
+          <th>تعليق الإدارة</th>
+          <th class="no-print">الإجراء</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set type_map = {'leave':'إجازة','sick':'سكليف','permission':'استئذان','warning':'إنذار','secondment':'إعارة','late':'تأخر','other':'أخرى'} %}
+        {% for r in rows %}
+        {% set lf  = r.leave_form %}
+        {% set lsig = namespace(v=None) %}
+        {% set psig = namespace(v=None) %}
+        {% set wsig = namespace(v=None) %}
+        <tr>
+          <td class="mono">{{ r.id }}</td>
+          <td class="mono">{{ r.created_at|local_dt('%Y-%m-%d %H:%M') }}</td>
+          <td>
+            {{ r.employee.name if r.employee else '—' }}
+            {% if r.employee %}<span class="muted mono"> ({{ r.employee.emp_number }})</span>{% endif %}
+          </td>
+          <td>{{ type_map.get(r.type, r.type) }}</td>
+          <td class="mono">
+            {% if r.start_date or r.end_date %}
+              {{ r.start_date or '—' }} → {{ r.end_date or '—' }}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <span class="badge {{ 'success' if r.status=='approved' else ('danger' if r.status=='rejected' else 'warning') }}">
+              {{ 'مقبول' if r.status=='approved' else ('مرفوض' if r.status=='rejected' else 'قيد المراجعة') }}
+            </span>
+          </td>
+          <td>{{ r.admin_comment or '—' }}</td>
+          <td class="no-print">
+            {% if r.status == 'approved' %}
+              {% if r.type == 'leave' and r.leave_form %}
+                {% if r.leave_form.signed %}
+                  <a href="{{ url_for('web_leave_pdf', req_id=r.id) }}" class="btn success" target="_blank" style="font-size:12px">⬇ PDF</a>
+                {% else %}
+                  <a href="{{ url_for('web_leave_sign', req_id=r.id) }}" class="btn primary" style="font-size:12px">✍ وقّع الإجازة</a>
+                {% endif %}
+              {% elif r.type == 'permission' %}
+                <a href="{{ url_for('web_permission_sign', req_id=r.id) }}" class="btn" style="background:#f39c12;color:#fff;font-size:12px">✍ وقّع الاستئذان</a>
+              {% elif r.type == 'warning' %}
+                <a href="{{ url_for('web_leave_sign', req_id=r.id) }}" class="btn danger" style="font-size:12px">📄 نموذج الإنذار</a>
+              {% elif r.type == 'sick' %}
+                <span class="muted" style="font-size:12px">✓ تم تسجيل الغياب</span>
+              {% else %}—{% endif %}
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="center muted">لا توجد طلبات بعد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

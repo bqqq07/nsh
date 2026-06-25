@@ -1747,32 +1747,124 @@ def request_decide(req_id):
     req.decided_at = datetime.now(timezone.utc)
     req.admin_comment = comment
 
-    # لو Approved و نوعه Leave: طبّقها على الحضور مباشرة (سلوكك الحالي)
-    if decision == "approve" and (req.type or "leave") == "leave":
-        _apply_leave_attendance_for_request(req)
-
-    # --- الإضافة الجديدة: إنشاء مهمة HR عند الموافقة ---
     if decision == "approve":
-        # تضمن وجود سجل واحد فقط لكل طلب
+        # إجازة → تسجيل حضور + توليد PDF
+        if req.type == "leave":
+            _apply_leave_attendance_for_request(req)
+            existing_form = LeaveForm.query.filter_by(request_id=req.id).first()
+            if not existing_form:
+                try:
+                    pdf_name = generate_leave_pdf(req)
+                    if pdf_name:
+                        db.session.add(LeaveForm(request_id=req.id, filename=pdf_name))
+                except Exception as e:
+                    app.logger.error("leave PDF error: %s", e)
+
+        # سكليف → تسجيل غياب تلقائي
+        if req.type == "sick":
+            _apply_sick_attendance_for_request(req)
+
+        # إنشاء مهمة HR لجميع الأنواع
         existing = HRTask.query.filter_by(request_id=req.id).first()
         if not existing:
             try:
                 db.session.add(HRTask(
                     request_id=req.id,
                     employee_id=req.employee_id,
-                    type=req.type or "leave",     # نفس نوع الطلب
-                    status="pending"              # بانتظار تنفيذ HR
+                    type=req.type or "leave",
+                    status="pending",
+                    company_id=req.company_id,
                 ))
-                # لا حاجة لعمل commit منفصل؛ سيُحفظ مع الـ commit النهائي
             except IntegrityError:
-                db.session.rollback()  # في حال unique constraint
-                # إعادة محاولة قراءة الموجود (تحسبًا لتنافُس)
-                pass
-    # --- نهاية الإضافة ---
+                db.session.rollback()
 
     db.session.commit()
     flash("Request updated.", "success")
     return redirect(url_for("requests_inbox"))
+
+
+@app.route("/requests/<int:req_id>/leave-sign", methods=["GET", "POST"])
+@login_required
+def web_leave_sign(req_id):
+    req = Request.query.get_or_404(req_id)
+    lf  = LeaveForm.query.filter_by(request_id=req_id).first()
+    sig = LeaveSignature.query.filter_by(request_id=req_id).first()
+
+    if request.method == "POST":
+        signature  = (request.form.get("signature") or "").strip()
+        emp_name   = (request.form.get("employee_name") or (req.employee.name if req.employee else "")).strip()
+        if not signature:
+            flash("التوقيع مطلوب", "danger")
+            return redirect(url_for("web_leave_sign", req_id=req_id))
+
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Asia/Riyadh"))
+        if sig:
+            sig.signature = signature; sig.employee_name = emp_name; sig.signed_at = now
+        else:
+            sig = LeaveSignature(request_id=req_id, signature=signature,
+                                 employee_name=emp_name, signed_at=now)
+            db.session.add(sig)
+
+        if lf:
+            lf.signed = True; lf.signed_at = now
+            try:
+                pdf_name = generate_leave_pdf(req, sig)
+                if pdf_name:
+                    lf.filename = pdf_name
+            except Exception as e:
+                app.logger.error("leave sign PDF: %s", e)
+        db.session.commit()
+        flash("تم التوقيع بنجاح ✓", "success")
+        return redirect(url_for("web_leave_sign", req_id=req_id))
+
+    return render_template("leave_sign.html", req=req, lf=lf, sig=sig)
+
+
+@app.route("/requests/<int:req_id>/permission-sign", methods=["GET", "POST"])
+@login_required
+def web_permission_sign(req_id):
+    req  = Request.query.get_or_404(req_id)
+    sig  = PermissionSignature.query.filter_by(request_id=req_id).first()
+    task = HRTask.query.filter_by(request_id=req_id).first()
+
+    if request.method == "POST":
+        signature = (request.form.get("signature") or "").strip()
+        emp_name  = (request.form.get("employee_name") or (req.employee.name if req.employee else "")).strip()
+        if not signature:
+            flash("التوقيع مطلوب", "danger")
+            return redirect(url_for("web_permission_sign", req_id=req_id))
+
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Asia/Riyadh"))
+        if sig:
+            sig.signature = signature; sig.employee_name = emp_name; sig.signed_at = now
+        else:
+            sig = PermissionSignature(request_id=req_id, signature=signature,
+                                      employee_name=emp_name, signed_at=now)
+            db.session.add(sig)
+        db.session.flush()
+
+        try:
+            pdf_name = generate_permission_pdf(req, sig)
+            if pdf_name and task:
+                task.warning_pdf = pdf_name
+        except Exception as e:
+            app.logger.error("permission sign PDF: %s", e)
+        db.session.commit()
+        flash("تم التوقيع بنجاح ✓", "success")
+        return redirect(url_for("web_permission_sign", req_id=req_id))
+
+    return render_template("permission_sign.html", req=req, sig=sig, task=task)
+
+
+@app.get("/requests/<int:req_id>/leave-pdf")
+@login_required
+def web_leave_pdf(req_id):
+    lf = LeaveForm.query.filter_by(request_id=req_id).first_or_404()
+    return send_file(os.path.join(UPLOAD_FOLDER, lf.filename),
+                     mimetype="application/pdf", as_attachment=False,
+                     download_name=f"leave_form_{req_id}.pdf")
 
 
 @app.route("/attendance/report", methods=["GET"])
