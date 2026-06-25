@@ -244,6 +244,26 @@ class WarningSignature(db.Model):
 
     request = db.relationship("Request", foreign_keys=[request_id])
 
+class LeaveSignature(db.Model):
+    """توقيع الموظف على نموذج الإجازة"""
+    __tablename__ = "leave_signature"
+    id           = db.Column(db.Integer, primary_key=True)
+    request_id   = db.Column(db.Integer, db.ForeignKey("requests.id"), nullable=False, unique=True)
+    employee_name= db.Column(db.String(255), nullable=True)
+    signed_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    signature    = db.Column(db.Text, nullable=False)  # base64 PNG
+    request      = db.relationship("Request", foreign_keys=[request_id])
+
+class PermissionSignature(db.Model):
+    """توقيع الموظف على نموذج الاستئذان"""
+    __tablename__ = "permission_signature"
+    id           = db.Column(db.Integer, primary_key=True)
+    request_id   = db.Column(db.Integer, db.ForeignKey("requests.id"), nullable=False, unique=True)
+    employee_name= db.Column(db.String(255), nullable=True)
+    signed_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    signature    = db.Column(db.Text, nullable=False)  # base64 PNG
+    request      = db.relationship("Request", foreign_keys=[request_id])
+
 # ===================== Models =====================
 # ========== Model: Request ==========
 class Request(db.Model):
@@ -517,6 +537,28 @@ def _apply_leave_attendance_for_request(req: Request):
                 remarks=marker,
             )
             db.session.add(rec)
+        cur += timedelta(days=1)
+
+def _apply_sick_attendance_for_request(req: Request):
+    """يسجّل غياب (absent) للسكليف تلقائياً لكل يوم بين start_date و end_date."""
+    if not (req and req.employee_id and req.start_date and req.end_date):
+        return
+    marker = f"auto_sick_req_{req.id}"
+    cur = req.start_date
+    while cur <= req.end_date:
+        rec = Attendance.query.filter_by(employee_id=req.employee_id, date=cur).first()
+        if rec:
+            rec.status  = "absent"
+            if marker not in (rec.remarks or ""):
+                rec.remarks = (rec.remarks + " " + marker).strip() if rec.remarks else marker
+        else:
+            db.session.add(Attendance(
+                employee_id=req.employee_id,
+                supervisor_id=req.supervisor_id,
+                date=cur,
+                status="absent",
+                remarks=marker,
+            ))
         cur += timedelta(days=1)
 
 def get_employee_summary(emp_id: int):
@@ -3953,93 +3995,397 @@ def generate_warning_pdf(req: "Request", sig: "WarningSignature") -> str:
     doc.build(elements)
     return fname
 
-def generate_leave_pdf(req: "Request") -> str:
-    """
-    يولّد نموذج إجازة ثابت كـ PDF ويحفظه في مجلد uploads.
-    يرجع اسم الملف المحفوظ.
-    يستخدم reportlab — ثبّته بـ: pip install reportlab
-    """
+def generate_leave_pdf(req: "Request", sig: "LeaveSignature" = None) -> str:
+    """نموذج إجازة رسمي عربي/إنجليزي صفحة واحدة مع إمكانية التوقيع."""
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                        Paragraph, Spacer, Image as RLImage,
+                                        HRFlowable)
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import cm
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
+        import base64, io
     except ImportError:
-        # لو reportlab غير مثبت، أرجع اسم فارغ
         return ""
+
+    # ── خط عربي ──
+    ARABIC_FONT = "Arabic"
+    ARABIC_TTF  = "/usr/share/fonts/google-droid/DroidSansArabic.ttf"
+    LATIN_FONT  = "Helvetica"
+    try:
+        pdfmetrics.registerFont(TTFont(ARABIC_FONT, ARABIC_TTF))
+        use_arabic = True
+    except Exception:
+        ARABIC_FONT = "Helvetica"
+        use_arabic  = False
+
+    def ar(txt: str) -> str:
+        if not use_arabic:
+            return txt
+        try:
+            import arabic_reshaper
+            from bidi.algorithm import get_display
+            return get_display(arabic_reshaper.reshape(txt))
+        except Exception:
+            return txt
 
     emp  = req.employee
     sup  = req.supervisor
+    company_name = ""
+    try:
+        from sqlalchemy.orm import relationship
+        if emp and emp.company_id:
+            from main import Company
+            c = Company.query.get(emp.company_id)
+            if c:
+                company_name = c.name or ""
+    except Exception:
+        pass
+
+    days_count = "—"
+    if req.start_date and req.end_date:
+        days_count = str((req.end_date - req.start_date).days + 1)
+
     fname = f"leave_{req.id}_{uuid.uuid4().hex[:8]}.pdf"
     fpath = os.path.join(UPLOAD_FOLDER, fname)
 
-    doc = SimpleDocTemplate(fpath, pagesize=A4,
-                            rightMargin=2*cm, leftMargin=2*cm,
-                            topMargin=2*cm, bottomMargin=2*cm)
+    W, H = A4
+    doc  = SimpleDocTemplate(fpath, pagesize=A4,
+                              rightMargin=1.8*cm, leftMargin=1.8*cm,
+                              topMargin=1.5*cm, bottomMargin=1.5*cm)
 
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("title", parent=styles["Title"],
-                                 fontSize=16, spaceAfter=12)
-    normal = styles["Normal"]
+    styles   = getSampleStyleSheet()
+    ar_style = ParagraphStyle("ar", fontName=ARABIC_FONT, fontSize=10,
+                               alignment=2, leading=16)
+    en_style = ParagraphStyle("en", fontName=LATIN_FONT,  fontSize=9,
+                               alignment=0, textColor=colors.HexColor("#555555"), leading=14)
+    hdr_style= ParagraphStyle("hdr",fontName=ARABIC_FONT, fontSize=14,
+                               alignment=1, spaceAfter=2, textColor=colors.HexColor("#1a1f3a"))
+
+    DARK  = colors.HexColor("#1a1f3a")
+    BLUE  = colors.HexColor("#2563eb")
+    LIGHT = colors.HexColor("#f0f4ff")
+    GREY  = colors.HexColor("#f8f8f8")
+
+    def cell(ar_text, en_text="", bold=False, bg=None, center=False):
+        align = 1 if center else 2
+        f     = ARABIC_FONT
+        p_ar  = Paragraph(ar(ar_text), ParagraphStyle("c", fontName=f,
+                          fontSize=10, alignment=align, leading=14,
+                          textColor=colors.black))
+        p_en  = Paragraph(en_text, ParagraphStyle("ce", fontName=LATIN_FONT,
+                          fontSize=8,  alignment=1 if center else 0,
+                          textColor=colors.HexColor("#777777"), leading=12))
+        return [p_ar, p_en] if en_text else p_ar
 
     elements = []
 
-    # عنوان النموذج
-    elements.append(Paragraph("نموذج إجازة رسمي", title_style))
+    # ══ رأس الصفحة: شعار + اسم الشركة + عنوان ══
+    logo_path = os.path.join(os.path.dirname(__file__), "static", "logo.png")
+    header_cols = []
+    if os.path.exists(logo_path):
+        try:
+            header_cols.append(RLImage(logo_path, width=2.5*cm, height=2.5*cm))
+        except Exception:
+            header_cols.append(Paragraph("", styles["Normal"]))
+    else:
+        header_cols.append(Paragraph("", styles["Normal"]))
+
+    header_cols.append(
+        Table([[Paragraph(ar("نموذج طلب إجازة"), ParagraphStyle("t1",
+                          fontName=ARABIC_FONT, fontSize=16, alignment=1,
+                          textColor=DARK, spaceAfter=4))],
+               [Paragraph("LEAVE REQUEST FORM", ParagraphStyle("t2",
+                          fontName=LATIN_FONT,  fontSize=10, alignment=1,
+                          textColor=BLUE))],
+               [Paragraph(ar(company_name) if company_name else "",
+                          ParagraphStyle("t3", fontName=ARABIC_FONT, fontSize=9,
+                          alignment=1, textColor=colors.HexColor("#888888")))]],
+              colWidths=[W - 3.6*cm - 2.5*cm])
+    )
+    header_cols.append(Paragraph("", styles["Normal"]))
+
+    hdr_tbl = Table([header_cols], colWidths=[2.5*cm, W - 3.6*cm - 2.5*cm, None])
+    hdr_tbl.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING",    (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+    ]))
+    elements.append(hdr_tbl)
+    elements.append(HRFlowable(width="100%", thickness=2, color=BLUE, spaceAfter=10))
+
+    # ══ بيانات الموظف ══
+    def info_row(label_ar, label_en, val):
+        val_str = val or "—"
+        return [
+            Paragraph(ar(label_ar), ParagraphStyle("lbl", fontName=ARABIC_FONT,
+                      fontSize=9, alignment=2, textColor=colors.HexColor("#555"))),
+            Paragraph(label_en, ParagraphStyle("lble", fontName=LATIN_FONT,
+                      fontSize=7.5, alignment=0, textColor=colors.HexColor("#999"))),
+            Paragraph(ar(str(val_str)), ParagraphStyle("val", fontName=ARABIC_FONT,
+                      fontSize=10, alignment=2, textColor=DARK)),
+        ]
+
+    info_data = [
+        info_row("اسم الموظف",    "Employee Name",   emp.name if emp else ""),
+        info_row("رقم الموظف",    "Employee No.",    emp.emp_number if emp else ""),
+        info_row("القسم",         "Department",      emp.department if emp else ""),
+        info_row("الموقع",        "Site",            emp.site if emp else ""),
+        info_row("المشرف المباشر","Direct Supervisor",sup.name if sup else ""),
+    ]
+    info_tbl = Table(info_data, colWidths=[3.5*cm, 3*cm, 9*cm])
+    info_tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,-1), GREY),
+        ("ROWBACKGROUNDS",(0,0), (-1,-1), [colors.white, GREY]),
+        ("GRID",          (0,0), (-1,-1), 0.3, colors.HexColor("#dddddd")),
+        ("TOPPADDING",    (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ("LEFTPADDING",   (0,0), (-1,-1), 6),
+        ("RIGHTPADDING",  (0,0), (-1,-1), 6),
+        ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+    ]))
+    elements.append(info_tbl)
+    elements.append(Spacer(1, 0.4*cm))
+
+    # ══ بيانات الإجازة ══
+    elements.append(
+        Paragraph(ar("تفاصيل الإجازة  |  Leave Details"),
+                  ParagraphStyle("sec", fontName=ARABIC_FONT, fontSize=11,
+                  alignment=1, textColor=BLUE, spaceAfter=4))
+    )
+
+    leave_data = [
+        info_row("نوع الإجازة",    "Leave Type",     "إجازة اعتيادية" if req.type == "leave" else req.type),
+        info_row("تاريخ البداية",  "Start Date",     str(req.start_date) if req.start_date else ""),
+        info_row("تاريخ الانتهاء", "End Date",       str(req.end_date)   if req.end_date   else ""),
+        info_row("عدد الأيام",     "No. of Days",    days_count),
+        info_row("السبب",          "Reason",         req.reason or ""),
+    ]
+    leave_tbl = Table(leave_data, colWidths=[3.5*cm, 3*cm, 9*cm])
+    leave_tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,0), LIGHT),
+        ("ROWBACKGROUNDS",(0,0), (-1,-1), [LIGHT, colors.white]),
+        ("GRID",          (0,0), (-1,-1), 0.3, colors.HexColor("#c0d0ff")),
+        ("TOPPADDING",    (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ("LEFTPADDING",   (0,0), (-1,-1), 6),
+        ("RIGHTPADDING",  (0,0), (-1,-1), 6),
+        ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+    ]))
+    elements.append(leave_tbl)
     elements.append(Spacer(1, 0.5*cm))
 
-    # بيانات النموذج في جدول
-    rows = [
-        ["البند", "البيانات"],
-        ["اسم الموظف",   emp.name if emp else "—"],
-        ["رقم الموظف",   emp.emp_number if emp else "—"],
-        ["القسم",        emp.department if emp else "—"],
-        ["الموقع",       emp.site if emp else "—"],
-        ["المشرف",       sup.name if sup else "—"],
-        ["نوع الطلب",    req.type or "إجازة"],
-        ["تاريخ البداية", str(req.start_date) if req.start_date else "—"],
-        ["تاريخ النهاية", str(req.end_date)   if req.end_date   else "—"],
-        ["عدد الأيام",   str((req.end_date - req.start_date).days + 1)
-                         if req.start_date and req.end_date else "—"],
-        ["السبب",        req.reason or "—"],
-        ["تاريخ الموافقة", str(req.decided_at.date()) if req.decided_at else "—"],
-    ]
+    # ══ التوقيعات ══
+    elements.append(
+        Paragraph(ar("التوقيعات  |  Signatures"),
+                  ParagraphStyle("sec2", fontName=ARABIC_FONT, fontSize=11,
+                  alignment=1, textColor=BLUE, spaceAfter=4))
+    )
 
-    tbl = Table(rows, colWidths=[5*cm, 11*cm])
+    # بناء خلية توقيع الموظف
+    emp_sig_cell = []
+    if sig and sig.signature:
+        try:
+            img_data = base64.b64decode(sig.signature)
+            img_buf  = io.BytesIO(img_data)
+            emp_sig_cell.append(RLImage(img_buf, width=4.5*cm, height=1.8*cm))
+        except Exception:
+            emp_sig_cell.append(Paragraph("_" * 20, styles["Normal"]))
+        emp_sig_cell.append(Paragraph(
+            ar(sig.employee_name or (emp.name if emp else "")),
+            ParagraphStyle("sn", fontName=ARABIC_FONT, fontSize=8.5,
+                           alignment=1, textColor=DARK)))
+        signed_date = sig.signed_at.strftime("%Y/%m/%d") if sig.signed_at else ""
+        emp_sig_cell.append(Paragraph(signed_date,
+            ParagraphStyle("sd", fontName=LATIN_FONT, fontSize=8,
+                           alignment=1, textColor=colors.HexColor("#777"))))
+    else:
+        emp_sig_cell = [Paragraph("\n\n\n", styles["Normal"]),
+                        Paragraph(ar("توقيع الموظف"),
+                            ParagraphStyle("sl", fontName=ARABIC_FONT, fontSize=8.5,
+                                           alignment=1, textColor=colors.HexColor("#aaa")))]
+
+    sup_sig_cell  = [Paragraph("\n\n\n", styles["Normal"]),
+                     Paragraph(ar("توقيع المشرف"),
+                         ParagraphStyle("s2", fontName=ARABIC_FONT, fontSize=8.5,
+                                        alignment=1, textColor=colors.HexColor("#aaa")))]
+    hr_sig_cell   = [Paragraph("\n\n\n", styles["Normal"]),
+                     Paragraph(ar("توقيع الموارد البشرية"),
+                         ParagraphStyle("s3", fontName=ARABIC_FONT, fontSize=8.5,
+                                        alignment=1, textColor=colors.HexColor("#aaa")))]
+
+    sig_tbl = Table([[emp_sig_cell, sup_sig_cell, hr_sig_cell]],
+                    colWidths=[5.3*cm, 5.3*cm, 5.3*cm])
+    sig_tbl.setStyle(TableStyle([
+        ("BOX",           (0,0), (0,0), 1, colors.HexColor("#2563eb")),
+        ("BOX",           (1,0), (1,0), 1, colors.HexColor("#cccccc")),
+        ("BOX",           (2,0), (2,0), 1, colors.HexColor("#cccccc")),
+        ("ALIGN",         (0,0), (-1,-1), "CENTER"),
+        ("VALIGN",        (0,0), (-1,-1), "BOTTOM"),
+        ("TOPPADDING",    (0,0), (-1,-1), 10),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+        ("BACKGROUND",    (0,0), (0,0), colors.HexColor("#f0f4ff")),
+    ]))
+    elements.append(sig_tbl)
+
+    # ══ تذييل ══
+    elements.append(Spacer(1, 0.5*cm))
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc")))
+    from datetime import datetime as dt_cls
+    elements.append(Paragraph(
+        f"Generated: {dt_cls.utcnow().strftime('%Y-%m-%d')}  |  NSH SafeTrack",
+        ParagraphStyle("ft", fontName=LATIN_FONT, fontSize=7.5,
+                       alignment=1, textColor=colors.HexColor("#aaaaaa"))))
+
+    doc.build(elements)
+    return fname
+
+
+def generate_permission_pdf(req: "Request", sig: "PermissionSignature" = None) -> str:
+    """نموذج استئذان رسمي عربي/إنجليزي مع التوقيع."""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                        Paragraph, Spacer, Image as RLImage,
+                                        HRFlowable)
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        import base64, io
+    except ImportError:
+        return ""
+
+    ARABIC_FONT = "Arabic"
+    ARABIC_TTF  = "/usr/share/fonts/google-droid/DroidSansArabic.ttf"
+    LATIN_FONT  = "Helvetica"
+    try:
+        pdfmetrics.registerFont(TTFont(ARABIC_FONT, ARABIC_TTF))
+        use_arabic = True
+    except Exception:
+        ARABIC_FONT = "Helvetica"
+        use_arabic  = False
+
+    def ar(txt):
+        if not use_arabic:
+            return txt
+        try:
+            import arabic_reshaper
+            from bidi.algorithm import get_display
+            return get_display(arabic_reshaper.reshape(txt))
+        except Exception:
+            return txt
+
+    emp = req.employee
+    sup = req.supervisor
+    fname = f"permission_{req.id}_{uuid.uuid4().hex[:8]}.pdf"
+    fpath = os.path.join(UPLOAD_FOLDER, fname)
+    W, H  = A4
+
+    styles = getSampleStyleSheet()
+    DARK   = colors.HexColor("#1a1f3a")
+    BLUE   = colors.HexColor("#2563eb")
+    LIGHT  = colors.HexColor("#f0f4ff")
+    GREY   = colors.HexColor("#f8f8f8")
+
+    doc = SimpleDocTemplate(fpath, pagesize=A4,
+                            rightMargin=1.8*cm, leftMargin=1.8*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+    elements = []
+
+    def info_row(label_ar, label_en, val):
+        return [
+            Paragraph(ar(label_ar), ParagraphStyle("lbl", fontName=ARABIC_FONT, fontSize=9,
+                      alignment=2, textColor=colors.HexColor("#555"))),
+            Paragraph(label_en, ParagraphStyle("lble", fontName=LATIN_FONT, fontSize=7.5,
+                      alignment=0, textColor=colors.HexColor("#999"))),
+            Paragraph(ar(str(val or "—")), ParagraphStyle("val", fontName=ARABIC_FONT, fontSize=10,
+                      alignment=2, textColor=DARK)),
+        ]
+
+    # رأس
+    logo_path = os.path.join(os.path.dirname(__file__), "static", "logo.png")
+    logo_cell = RLImage(logo_path, width=2.5*cm, height=2.5*cm) if os.path.exists(logo_path) \
+                else Paragraph("", styles["Normal"])
+    title_tbl = Table([[logo_cell,
+        Table([[Paragraph(ar("نموذج استئذان"), ParagraphStyle("t1", fontName=ARABIC_FONT,
+                              fontSize=16, alignment=1, textColor=DARK))],
+               [Paragraph("PERMISSION FORM", ParagraphStyle("t2", fontName=LATIN_FONT,
+                              fontSize=10, alignment=1, textColor=BLUE))]],
+              colWidths=[W - 3.6*cm - 2.5*cm])]], colWidths=[2.5*cm, W - 3.6*cm - 2.5*cm, None])
+    title_tbl.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+                                   ("TOPPADDING",(0,0),(-1,-1),6),
+                                   ("BOTTOMPADDING",(0,0),(-1,-1),6)]))
+    elements.append(title_tbl)
+    elements.append(HRFlowable(width="100%", thickness=2, color=BLUE, spaceAfter=10))
+
+    rows = [
+        info_row("اسم الموظف",   "Employee Name",  emp.name if emp else ""),
+        info_row("رقم الموظف",   "Employee No.",   emp.emp_number if emp else ""),
+        info_row("القسم",        "Department",     emp.department if emp else ""),
+        info_row("المشرف",       "Supervisor",     sup.name if sup else ""),
+        info_row("التاريخ",      "Date",           str(req.start_date or req.created_at.date())),
+        info_row("السبب",        "Reason",         req.reason or ""),
+    ]
+    tbl = Table(rows, colWidths=[3.5*cm, 3*cm, 9*cm])
     tbl.setStyle(TableStyle([
-        ("BACKGROUND",   (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
-        ("TEXTCOLOR",    (0, 0), (-1, 0), colors.white),
-        ("FONTSIZE",     (0, 0), (-1, 0), 12),
-        ("ALIGN",        (0, 0), (-1, -1), "RIGHT"),
-        ("FONTSIZE",     (0, 1), (-1, -1), 10),
-        ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.HexColor("#f2f2f2"), colors.white]),
-        ("GRID",         (0, 0), (-1, -1), 0.5, colors.grey),
-        ("TOPPADDING",   (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 6),
+        ("ROWBACKGROUNDS",(0,0),(-1,-1),[LIGHT, colors.white]),
+        ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#c0d0ff")),
+        ("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6),
+        ("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
     ]))
     elements.append(tbl)
-    elements.append(Spacer(1, 1.5*cm))
+    elements.append(Spacer(1, 0.6*cm))
 
-    # خط التوقيع
-    sign_data = [
-        ["توقيع الموظف", "توقيع المشرف", "توقيع الموارد البشرية"],
-        [" " * 20,       " " * 20,        " " * 20],
-    ]
-    sign_tbl = Table(sign_data, colWidths=[5.5*cm, 5.5*cm, 5.5*cm])
-    sign_tbl.setStyle(TableStyle([
-        ("ALIGN",  (0, 0), (-1, -1), "CENTER"),
-        ("FONTSIZE",(0, 0), (-1, -1), 10),
-        ("BOX",    (0, 1), (0, 1), 1, colors.black),
-        ("BOX",    (1, 1), (1, 1), 1, colors.black),
-        ("BOX",    (2, 1), (2, 1), 1, colors.black),
-        ("TOPPADDING",   (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 8),
+    # توقيعات
+    elements.append(Paragraph(ar("التوقيعات  |  Signatures"),
+        ParagraphStyle("sec", fontName=ARABIC_FONT, fontSize=11, alignment=1,
+                       textColor=BLUE, spaceAfter=4)))
+
+    def sig_cell(sig_obj, label_ar, label_en, name_str=""):
+        if sig_obj and sig_obj.signature:
+            try:
+                img_buf = io.BytesIO(base64.b64decode(sig_obj.signature))
+                img     = RLImage(img_buf, width=4.5*cm, height=1.8*cm)
+                return [img,
+                        Paragraph(ar(sig_obj.employee_name or name_str),
+                            ParagraphStyle("sn", fontName=ARABIC_FONT, fontSize=8.5, alignment=1, textColor=DARK)),
+                        Paragraph(sig_obj.signed_at.strftime("%Y/%m/%d") if sig_obj.signed_at else "",
+                            ParagraphStyle("sd", fontName=LATIN_FONT, fontSize=8, alignment=1,
+                                           textColor=colors.HexColor("#777")))]
+            except Exception:
+                pass
+        return [Paragraph("\n\n\n", styles["Normal"]),
+                Paragraph(ar(label_ar), ParagraphStyle("s_lbl", fontName=ARABIC_FONT, fontSize=8.5,
+                             alignment=1, textColor=colors.HexColor("#aaa"))),
+                Paragraph(label_en, ParagraphStyle("s_lble", fontName=LATIN_FONT, fontSize=7.5,
+                             alignment=1, textColor=colors.HexColor("#ccc")))]
+
+    emp_col = sig_cell(sig, "توقيع الموظف", "Employee Signature", emp.name if emp else "")
+    sup_col = sig_cell(None, "توقيع المشرف", "Supervisor Signature")
+    mgr_col = sig_cell(None, "توقيع الإدارة", "Management Signature")
+
+    sig_tbl = Table([[emp_col, sup_col, mgr_col]], colWidths=[5.3*cm, 5.3*cm, 5.3*cm])
+    sig_tbl.setStyle(TableStyle([
+        ("BOX",(0,0),(0,0),1,BLUE),("BOX",(1,0),(1,0),1,colors.HexColor("#cccccc")),
+        ("BOX",(2,0),(2,0),1,colors.HexColor("#cccccc")),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"BOTTOM"),
+        ("TOPPADDING",(0,0),(-1,-1),10),("BOTTOMPADDING",(0,0),(-1,-1),8),
+        ("BACKGROUND",(0,0),(0,0),LIGHT),
     ]))
-    elements.append(sign_tbl)
-
+    elements.append(sig_tbl)
+    elements.append(Spacer(1, 0.4*cm))
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc")))
+    from datetime import datetime as dt_cls
+    elements.append(Paragraph(
+        f"Generated: {dt_cls.utcnow().strftime('%Y-%m-%d')}  |  NSH SafeTrack",
+        ParagraphStyle("ft", fontName=LATIN_FONT, fontSize=7.5, alignment=1,
+                       textColor=colors.HexColor("#aaaaaa"))))
     doc.build(elements)
     return fname
 
@@ -4308,7 +4654,7 @@ def api_request_new():
     r = Request(
         supervisor_id=u.id,
         employee_id=emp.id,
-        type=rtype if rtype in {"leave", "permission", "warning", "late", "other", "secondment"} else "other",
+        type=rtype if rtype in {"leave", "sick", "permission", "warning", "late", "other", "secondment"} else "other",
         start_date=_pd(start_date),
         end_date=_pd(end_date),
         reason=reason,
@@ -4363,10 +4709,15 @@ def api_requests_mine():
     for r in reqs:
         emp = r.employee
         try:
-            _task = HRTask.query.filter_by(request_id=r.id).first() if r.type == "warning" else None
-            _official = _task.official_reason if _task else None
+            _task     = HRTask.query.filter_by(request_id=r.id).first()
+            _official = _task.official_reason if _task and r.type == "warning" else None
         except Exception:
             _official = None
+        # نموذج الإجازة
+        _leave_form = LeaveForm.query.filter_by(request_id=r.id).first() if r.type == "leave" else None
+        _leave_sig  = LeaveSignature.query.filter_by(request_id=r.id).first() if r.type == "leave" else None
+        _perm_sig   = PermissionSignature.query.filter_by(request_id=r.id).first() if r.type == "permission" else None
+        _warn_sig   = WarningSignature.query.filter_by(request_id=r.id).first() if r.type == "warning" else None
         result.append({
             "id":            r.id,
             "type":          r.type,
@@ -4382,6 +4733,15 @@ def api_requests_mine():
             },
             "has_attachment":  len(r.attachments) > 0,
             "official_reason": _official,
+            # إجازة
+            "has_leave_form":  _leave_form is not None,
+            "leave_signed":    _leave_form.signed if _leave_form else False,
+            "leave_pdf_url":   f"/api/leave-form/{r.id}/download" if _leave_form else None,
+            # استئذان
+            "permission_signed": _perm_sig is not None,
+            # إنذار
+            "warning_signed":    _warn_sig is not None,
+            "warning_pdf_url":   f"/api/warning/{r.id}/download" if (_task and _task.warning_pdf) else None,
         })
 
     return jsonify(result)
@@ -4465,22 +4825,9 @@ def api_request_decide(req_id):
     leave_pdf_url = None
 
     if decision == "approve":
-        # تطبيق الإجازة على الحضور
+        # إجازة → تسجيل حضور + نموذج PDF
         if r.type == "leave":
             _apply_leave_attendance_for_request(r)
-
-        # إنشاء مهمة HR
-        existing = HRTask.query.filter_by(request_id=r.id).first()
-        if not existing:
-            db.session.add(HRTask(
-                request_id=r.id,
-                employee_id=r.employee_id,
-                type=r.type or "leave",
-                status="pending",
-            ))
-
-        # توليد نموذج الإجازة PDF (للإجازات فقط)
-        if r.type == "leave":
             existing_form = LeaveForm.query.filter_by(request_id=r.id).first()
             if not existing_form:
                 pdf_name = generate_leave_pdf(r)
@@ -4489,12 +4836,30 @@ def api_request_decide(req_id):
                     db.session.add(lf)
                     leave_pdf_url = f"/api/leave-form/{r.id}/download"
 
+        # سكليف → تسجيل غياب تلقائي
+        if r.type == "sick":
+            _apply_sick_attendance_for_request(r)
+
+        # إنشاء مهمة HR لجميع الأنواع
+        existing = HRTask.query.filter_by(request_id=r.id).first()
+        if not existing:
+            db.session.add(HRTask(
+                request_id=r.id,
+                employee_id=r.employee_id,
+                type=r.type or "leave",
+                status="pending",
+                company_id=r.company_id,
+            ))
+
     db.session.commit()
 
     # ─── إشعار للسوبرفايزر ───
+    type_labels = {"leave":"إجازة","sick":"سكليف","permission":"استئذان",
+                   "warning":"إنذار","secondment":"إعارة","late":"تأخر"}
+    type_ar = type_labels.get(r.type, r.type or "")
     _send_push_to_user(r.supervisor_id,
                        title="تحديث حالة الطلب",
-                       body=f"طلب {r.type} للموظف {r.employee.name if r.employee else ''} — {r.status}")
+                       body=f"طلب {type_ar} للموظف {r.employee.name if r.employee else ''} — {'مقبول' if r.status=='approved' else 'مرفوض'}")
 
     return jsonify({
         "message":       "Decision recorded",
@@ -7038,6 +7403,159 @@ def api_warning_download(request_id):
                      mimetype="application/pdf",
                      as_attachment=False,
                      download_name=task.warning_pdf)
+
+# ─────────────────────────────────────────────────────────────────
+#  توقيع الموظف على نموذج الإجازة
+# ─────────────────────────────────────────────────────────────────
+@app.post("/api/leave/sign/<int:request_id>")
+@api_login_required
+def api_leave_sign(request_id):
+    u   = get_api_user()
+    req = Request.query.get_or_404(request_id)
+    if req.supervisor_id != u.id and u.role not in ("admin", "hr"):
+        return jsonify(error="Forbidden"), 403
+
+    data      = freq.get_json(force=True) or {}
+    signature = (data.get("signature") or "").strip()
+    emp_name  = (data.get("employee_name") or (req.employee.name if req.employee else "")).strip()
+
+    if not signature:
+        return jsonify(error="التوقيع مطلوب"), 400
+
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo("Asia/Riyadh"))
+    sig = LeaveSignature.query.filter_by(request_id=request_id).first()
+    if sig:
+        sig.signature = signature; sig.employee_name = emp_name; sig.signed_at = now
+    else:
+        sig = LeaveSignature(request_id=request_id, signature=signature,
+                             employee_name=emp_name, signed_at=now)
+        db.session.add(sig)
+
+    # تحديث حالة نموذج الإجازة
+    lf = LeaveForm.query.filter_by(request_id=request_id).first()
+    if lf:
+        lf.signed    = True
+        lf.signed_at = now
+        # أعد توليد PDF مع التوقيع
+        try:
+            pdf_name = generate_leave_pdf(req, sig)
+            if pdf_name:
+                lf.filename = pdf_name
+        except Exception as e:
+            app.logger.error("leave PDF regen error: %s", e)
+
+    db.session.commit()
+
+    # إشعار HR بعد التوقيع
+    try:
+        hr_users = User.query.filter_by(role="hr", company_id=req.company_id, is_active=True).all()
+        for hr in hr_users:
+            _send_push_to_user(hr.id, title="توقيع نموذج إجازة",
+                               body=f"وقّع {emp_name} على نموذج إجازة {req.employee.name if req.employee else ''}")
+    except Exception:
+        pass
+
+    return jsonify(message="تم حفظ التوقيع", signed=True), 200
+
+
+@app.get("/api/leave/form/<int:request_id>")
+@api_login_required
+def api_leave_form_info(request_id):
+    """معلومات نموذج الإجازة + حالة التوقيع"""
+    req = Request.query.get_or_404(request_id)
+    lf  = LeaveForm.query.filter_by(request_id=request_id).first()
+    sig = LeaveSignature.query.filter_by(request_id=request_id).first()
+    emp = req.employee
+    sup = req.supervisor
+    return jsonify({
+        "request_id":    request_id,
+        "employee_name": emp.name       if emp else "",
+        "emp_number":    emp.emp_number if emp else "",
+        "department":    emp.department if emp else "",
+        "site":          emp.site       if emp else "",
+        "supervisor":    sup.name       if sup else "",
+        "start_date":    str(req.start_date) if req.start_date else "",
+        "end_date":      str(req.end_date)   if req.end_date   else "",
+        "days":          str((req.end_date - req.start_date).days + 1) if req.start_date and req.end_date else "",
+        "reason":        req.reason or "",
+        "approved_at":   str(req.decided_at.date()) if req.decided_at else "",
+        "has_form":      lf is not None,
+        "pdf_url":       f"/api/leave-form/{request_id}/download" if lf else None,
+        "signed":        lf.signed if lf else False,
+        "signed_at":     str(lf.signed_at) if lf and lf.signed_at else None,
+        "signer_name":   sig.employee_name if sig else None,
+    })
+
+
+# ─────────────────────────────────────────────────────────────────
+#  توقيع الموظف على نموذج الاستئذان
+# ─────────────────────────────────────────────────────────────────
+@app.post("/api/permission/sign/<int:request_id>")
+@api_login_required
+def api_permission_sign(request_id):
+    u   = get_api_user()
+    req = Request.query.get_or_404(request_id)
+    if req.type != "permission":
+        return jsonify(error="ليس طلب استئذان"), 400
+    if req.supervisor_id != u.id and u.role not in ("admin", "hr"):
+        return jsonify(error="Forbidden"), 403
+
+    data      = freq.get_json(force=True) or {}
+    signature = (data.get("signature") or "").strip()
+    emp_name  = (data.get("employee_name") or (req.employee.name if req.employee else "")).strip()
+
+    if not signature:
+        return jsonify(error="التوقيع مطلوب"), 400
+
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo("Asia/Riyadh"))
+    sig = PermissionSignature.query.filter_by(request_id=request_id).first()
+    if sig:
+        sig.signature = signature; sig.employee_name = emp_name; sig.signed_at = now
+    else:
+        sig = PermissionSignature(request_id=request_id, signature=signature,
+                                  employee_name=emp_name, signed_at=now)
+        db.session.add(sig)
+    db.session.commit()
+
+    # توليد PDF الاستئذان بعد التوقيع
+    try:
+        pdf_name = generate_permission_pdf(req, sig)
+        if pdf_name:
+            task = HRTask.query.filter_by(request_id=req.id).first()
+            if task:
+                task.warning_pdf = pdf_name  # نعيد استخدام حقل warning_pdf
+                db.session.commit()
+    except Exception as e:
+        app.logger.error("permission PDF error: %s", e)
+
+    return jsonify(message="تم حفظ التوقيع", signed=True), 200
+
+
+@app.get("/api/permission/form/<int:request_id>")
+@api_login_required
+def api_permission_form_info(request_id):
+    req = Request.query.get_or_404(request_id)
+    sig = PermissionSignature.query.filter_by(request_id=request_id).first()
+    emp = req.employee
+    sup = req.supervisor
+    task = HRTask.query.filter_by(request_id=request_id).first()
+    return jsonify({
+        "request_id":    request_id,
+        "employee_name": emp.name       if emp else "",
+        "emp_number":    emp.emp_number if emp else "",
+        "department":    emp.department if emp else "",
+        "supervisor":    sup.name       if sup else "",
+        "date":          str(req.start_date or req.created_at.date()),
+        "reason":        req.reason or "",
+        "status":        req.status,
+        "signed":        sig is not None,
+        "signed_at":     str(sig.signed_at) if sig else None,
+        "signer_name":   sig.employee_name  if sig else None,
+        "pdf_url":       f"/api/warning/{request_id}/download" if (task and task.warning_pdf) else None,
+    })
+
 
 # =====================================================================
 # WEEKLY REPORT EXPORTS
