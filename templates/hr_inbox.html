@@ -72,7 +72,15 @@
                   <a href="/requests/{{ r.id }}/leave-sign"
                      class="btn danger" style="font-size:12px">📄 نموذج الإنذار</a>
                 {% elif t.type == 'sick' %}
-                  <span class="muted" style="font-size:12px">✓ غياب مُسجَّل تلقائياً</span>
+                  <span class="muted" style="font-size:12px">✓ غياب مُسجَّل</span>
+                  {% if r.attachments %}
+                    {% for att in r.attachments %}
+                    <a href="{{ url_for('request_attachment_download', att_id=att.id) }}"
+                       class="btn" style="font-size:12px;background:#6c757d;color:#fff" target="_blank">
+                       📎 {{ att.original_name or 'الملف' }}
+                    </a>
+                    {% endfor %}
+                  {% endif %}
                 {% endif %}
               {% endif %}
             </div>

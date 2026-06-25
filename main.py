@@ -1867,6 +1867,17 @@ def web_leave_pdf(req_id):
                      download_name=f"leave_form_{req_id}.pdf")
 
 
+@app.get("/requests/attachment/<int:att_id>")
+@login_required
+def request_attachment_download(att_id):
+    att = RequestAttachment.query.get_or_404(att_id)
+    ext = att.filename.rsplit(".", 1)[-1].lower() if "." in att.filename else "pdf"
+    mime = "application/pdf" if ext == "pdf" else f"image/{ext}"
+    return send_file(os.path.join(UPLOAD_FOLDER, att.filename),
+                     mimetype=mime, as_attachment=False,
+                     download_name=att.original_name or att.filename)
+
+
 @app.route("/attendance/report", methods=["GET"])
 @admin_required
 def attendance_report():
@@ -3822,7 +3833,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 #  إعداد رفع الملفات
 # ─────────────────────────────────────────────
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
-ALLOWED_EXTENSIONS = {"pdf"}
+ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 ميجا كحد أقصى
@@ -4760,7 +4771,8 @@ def api_request_new():
     uploaded_file = freq.files.get("pdf_file")
     if uploaded_file and allowed_file(uploaded_file.filename):
         original_name = secure_filename(uploaded_file.filename)
-        saved_name    = f"req_{r.id}_{uuid.uuid4().hex[:8]}.pdf"
+        ext           = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else "pdf"
+        saved_name    = f"req_{r.id}_{uuid.uuid4().hex[:8]}.{ext}"
         uploaded_file.save(os.path.join(UPLOAD_FOLDER, saved_name))
 
         att = RequestAttachment(
