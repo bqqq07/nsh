@@ -112,6 +112,11 @@ struct AdminManagementView: View {
                     Label("إرسال إشعار", systemImage: "bell.badge.fill")
                 }
             }
+            Section {
+                NavigationLink(destination: ProfileView()) {
+                    Label("حسابي", systemImage: "person.circle")
+                }
+            }
         }
         .navigationTitle("الإدارة")
     }
