@@ -103,6 +103,9 @@ except ImportError:
 if 'csrf_token' not in app.jinja_env.globals:
     app.jinja_env.globals['csrf_token'] = lambda: ''
 
+# فلتر enumerate لـ Jinja2
+app.jinja_env.filters['enumerate'] = enumerate
+
 # ── Rate Limiter ─────────────────────────────────────────────────────
 try:
     from flask_limiter import Limiter
@@ -242,7 +245,8 @@ class WarningSignature(db.Model):
     signed_at    = db.Column(db.DateTime, default=datetime.utcnow)
     signature    = db.Column(db.Text, nullable=False)  # base64 PNG
 
-    request = db.relationship("Request", foreign_keys=[request_id])
+    request = db.relationship("Request", foreign_keys=[request_id],
+                              backref=db.backref("warning_sig", uselist=False))
 
 class LeaveSignature(db.Model):
     """توقيع الموظف على نموذج الإجازة"""
@@ -252,7 +256,8 @@ class LeaveSignature(db.Model):
     employee_name= db.Column(db.String(255), nullable=True)
     signed_at    = db.Column(db.DateTime, default=datetime.utcnow)
     signature    = db.Column(db.Text, nullable=False)  # base64 PNG
-    request      = db.relationship("Request", foreign_keys=[request_id])
+    request      = db.relationship("Request", foreign_keys=[request_id],
+                                   backref=db.backref("leave_sig", uselist=False))
 
 class PermissionSignature(db.Model):
     """توقيع الموظف على نموذج الاستئذان"""
@@ -262,7 +267,8 @@ class PermissionSignature(db.Model):
     employee_name= db.Column(db.String(255), nullable=True)
     signed_at    = db.Column(db.DateTime, default=datetime.utcnow)
     signature    = db.Column(db.Text, nullable=False)  # base64 PNG
-    request      = db.relationship("Request", foreign_keys=[request_id])
+    request      = db.relationship("Request", foreign_keys=[request_id],
+                                   backref=db.backref("permission_sig", uselist=False))
 
 # ===================== Models =====================
 # ========== Model: Request ==========
@@ -1157,10 +1163,15 @@ def request_new():
 @login_required
 def requests_mine():
     u = cur_user()
-    # الطلبات التي قدّمها هذا المستخدم (سوبرفايزر)
     reqs = Request.query.filter(Request.supervisor_id == u.id) \
                         .order_by(Request.created_at.desc()).all()
-    return render_template("requests_mine.html", rows=reqs)
+    # نجلب HRTask لكل طلب لمعرفة official_reason وحالة التطبيق
+    req_ids = [r.id for r in reqs]
+    tasks_map = {}
+    if req_ids:
+        for t in HRTask.query.filter(HRTask.request_id.in_(req_ids)).all():
+            tasks_map[t.request_id] = t
+    return render_template("requests_mine.html", rows=reqs, tasks_map=tasks_map)
 
 
 @app.post("/daily/aggregate/week")
@@ -1867,6 +1878,52 @@ def web_leave_pdf(req_id):
                      download_name=f"leave_form_{req_id}.pdf")
 
 
+@app.route("/requests/<int:req_id>/warning-sign", methods=["GET", "POST"])
+@login_required
+def web_warning_sign(req_id):
+    req  = Request.query.get_or_404(req_id)
+    task = HRTask.query.filter_by(request_id=req_id).first()
+    sig  = WarningSignature.query.filter_by(request_id=req_id).first()
+
+    if request.method == "POST":
+        signature = (request.form.get("signature") or "").strip()
+        emp_name  = (request.form.get("employee_name") or (req.employee.name if req.employee else "")).strip()
+        if not signature:
+            flash("التوقيع مطلوب", "danger")
+            return redirect(url_for("web_warning_sign", req_id=req_id))
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Asia/Riyadh"))
+        if sig:
+            sig.signature = signature; sig.employee_name = emp_name; sig.signed_at = now
+        else:
+            sig = WarningSignature(request_id=req_id, signature=signature,
+                                   employee_name=emp_name, signed_at=now)
+            db.session.add(sig)
+        # توليد PDF الإنذار
+        try:
+            pdf_name = generate_warning_pdf(req, sig)
+            if pdf_name and task:
+                task.warning_pdf = pdf_name
+        except Exception as e:
+            app.logger.error("warning sign PDF: %s", e)
+        db.session.commit()
+        flash("تم التوقيع بنجاح ✓", "success")
+        return redirect(url_for("web_warning_sign", req_id=req_id))
+
+    return render_template("warning_sign.html", req=req, task=task, sig=sig)
+
+
+@app.get("/requests/<int:req_id>/warning-pdf")
+@login_required
+def web_warning_pdf(req_id):
+    task = HRTask.query.filter_by(request_id=req_id).first_or_404()
+    if not task.warning_pdf:
+        abort(404)
+    return send_file(os.path.join(UPLOAD_FOLDER, task.warning_pdf),
+                     mimetype="application/pdf", as_attachment=False,
+                     download_name=f"warning_{req_id}.pdf")
+
+
 @app.get("/requests/attachment/<int:att_id>")
 @login_required
 def request_attachment_download(att_id):
@@ -2476,6 +2533,38 @@ def hr_task_apply(task_id):
         t.applied_at = datetime.now(timezone.utc)
         t.applied_by = cur_user().id
         db.session.commit()
+    return redirect(url_for("hr_inbox"))
+
+
+@app.post("/hr/task/<int:task_id>/set-reason")
+@hr_required
+def hr_task_set_reason(task_id):
+    """HR يحدد السبب الرسمي للإنذار من الويب"""
+    t = db.session.get(HRTask, task_id)
+    if not t or t.type != "warning":
+        abort(404)
+    reason = (request.form.get("official_reason") or "").strip()
+    if not reason:
+        flash("السبب الرسمي مطلوب", "danger")
+        return redirect(url_for("hr_inbox"))
+    try:
+        t.official_reason = reason
+    except Exception:
+        from sqlalchemy import text as _text
+        with db.engine.connect() as _conn:
+            _conn.execute(_text("ALTER TABLE hr_task ADD COLUMN IF NOT EXISTS official_reason TEXT NULL"))
+            _conn.commit()
+        t.official_reason = reason
+    db.session.commit()
+    # إشعار للمشرف
+    if t.request:
+        threading.Thread(
+            target=_send_push_to_user,
+            args=(t.request.supervisor_id, "إنذار — جاهز للتوقيع",
+                  "تم تحديد السبب الرسمي، يمكنك الآن فتح نموذج الإنذار"),
+            daemon=True,
+        ).start()
+    flash("تم تحديد السبب الرسمي ✓", "success")
     return redirect(url_for("hr_inbox"))
 
 @app.route("/admin")
