@@ -9243,71 +9243,6 @@ def hse_corrective_update(ca_id):
         flash("تم تحديث الإجراء.", "success")
     return redirect(url_for("hse_dashboard"))
 
-
-# ── API: Corrective Action (iOS) ──────────────────────────────────────
-
-@app.post("/api/hse/corrective_action")
-@api_hse_supervisor_required
-def api_hse_corrective_action_add():
-    u = get_api_user()
-    data = freq.get_json(force=True) or {}
-    obs_id         = data.get("observation_id")
-    assigned_to    = (data.get("assigned_to") or "").strip()
-    due_date_str   = (data.get("due_date") or "").strip()
-    action_required = (data.get("action_required") or "").strip()
-
-    if not all([obs_id, due_date_str, action_required]):
-        return jsonify({"error": "observation_id, due_date, action_required are required"}), 400
-
-    try:
-        due_date = parse_date(due_date_str)
-    except Exception:
-        return jsonify({"error": "invalid due_date format, use YYYY-MM-DD"}), 400
-
-    obs = HseObservation.query.filter_by(id=int(obs_id), company_id=u.company_id).first()
-    if not obs:
-        return jsonify({"error": "observation not found"}), 404
-
-    ca = HseCorrectiveAction(
-        observation_id=obs.id,
-        company_id=u.company_id,
-        assigned_to=assigned_to or None,
-        due_date=due_date,
-        action_required=action_required,
-        created_by=u.id,
-    )
-    db.session.add(ca)
-    db.session.commit()
-
-    import threading as _thr
-    _thr.Thread(
-        target=_send_push_to_user,
-        args=(obs.officer_id,
-              "📋 إجراء تصحيحي جديد",
-              f"تم فتح CA على ملاحظتك — مطلوب: {action_required[:80]}"),
-        daemon=True,
-    ).start()
-
-    return jsonify({"ok": True, "id": ca.id}), 201
-
-
-@app.put("/api/hse/corrective_action/<int:ca_id>")
-@api_hse_supervisor_required
-def api_hse_corrective_action_update(ca_id):
-    u = get_api_user()
-    ca = HseCorrectiveAction.query.filter_by(id=ca_id, company_id=u.company_id).first_or_404()
-    data = freq.get_json(force=True) or {}
-    status = data.get("status", ca.status)
-    if status not in ("open", "in_progress", "completed"):
-        return jsonify({"error": "invalid status"}), 400
-    ca.status = status
-    if status == "completed":
-        ca.completed_at     = datetime.now(RIYADH_TZ).date()
-        ca.completion_notes = (data.get("completion_notes") or "").strip() or None
-    db.session.commit()
-    return jsonify({"ok": True})
-
-
 # ── Officer: My Corrective Actions ───────────────────────────────────
 
 @app.get("/hse/my-ca")
@@ -9546,6 +9481,72 @@ def api_hse_supervisor_required(f):
             return jsonify({"error": "Forbidden"}), 403
         return f(*args, **kwargs)
     return wrapper
+
+
+
+
+# ── API: Corrective Action (iOS) ──────────────────────────────────────
+
+@app.post("/api/hse/corrective_action")
+@api_hse_supervisor_required
+def api_hse_corrective_action_add():
+    u = get_api_user()
+    data = freq.get_json(force=True) or {}
+    obs_id         = data.get("observation_id")
+    assigned_to    = (data.get("assigned_to") or "").strip()
+    due_date_str   = (data.get("due_date") or "").strip()
+    action_required = (data.get("action_required") or "").strip()
+
+    if not all([obs_id, due_date_str, action_required]):
+        return jsonify({"error": "observation_id, due_date, action_required are required"}), 400
+
+    try:
+        due_date = parse_date(due_date_str)
+    except Exception:
+        return jsonify({"error": "invalid due_date format, use YYYY-MM-DD"}), 400
+
+    obs = HseObservation.query.filter_by(id=int(obs_id), company_id=u.company_id).first()
+    if not obs:
+        return jsonify({"error": "observation not found"}), 404
+
+    ca = HseCorrectiveAction(
+        observation_id=obs.id,
+        company_id=u.company_id,
+        assigned_to=assigned_to or None,
+        due_date=due_date,
+        action_required=action_required,
+        created_by=u.id,
+    )
+    db.session.add(ca)
+    db.session.commit()
+
+    import threading as _thr
+    _thr.Thread(
+        target=_send_push_to_user,
+        args=(obs.officer_id,
+              "📋 إجراء تصحيحي جديد",
+              f"تم فتح CA على ملاحظتك — مطلوب: {action_required[:80]}"),
+        daemon=True,
+    ).start()
+
+    return jsonify({"ok": True, "id": ca.id}), 201
+
+
+@app.put("/api/hse/corrective_action/<int:ca_id>")
+@api_hse_supervisor_required
+def api_hse_corrective_action_update(ca_id):
+    u = get_api_user()
+    ca = HseCorrectiveAction.query.filter_by(id=ca_id, company_id=u.company_id).first_or_404()
+    data = freq.get_json(force=True) or {}
+    status = data.get("status", ca.status)
+    if status not in ("open", "in_progress", "completed"):
+        return jsonify({"error": "invalid status"}), 400
+    ca.status = status
+    if status == "completed":
+        ca.completed_at     = datetime.now(RIYADH_TZ).date()
+        ca.completion_notes = (data.get("completion_notes") or "").strip() or None
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @app.get("/api/hse/officer/<int:officer_id>/pdf")
