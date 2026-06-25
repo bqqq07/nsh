@@ -4648,15 +4648,7 @@ struct HSETbtPdfLayout: View {
 
     // ── Footer ─────────────────────────────────────────────────────────
     private var pdfFooter: some View {
-        VStack(spacing: 0) {
-            Rectangle().fill(blue).frame(height: 1)
-            HStack {
-                Text("NSH — Amiral/SATORP, Package 3, Area 321")
-                Spacer()
-                Text("DRP Classification: Restricted Distribution")
-            }
-            .font(.system(size: 7)).foregroundColor(.secondary).padding(.vertical, 5)
-        }
+        Rectangle().fill(blue).frame(height: 1)
     }
 
     // ── Table cell helpers ─────────────────────────────────────────────
@@ -4904,30 +4896,21 @@ struct HSEReportPdfLayout: View {
 
     // ── Footer ────────────────────────────────────────────────────────
     private var pdfFooter: some View {
-        VStack(spacing: 0) {
-            Rectangle().fill(dkBlue).frame(height: 1)
-            HStack {
-                Text("NSH — Amiral/SATORP, Package 3, Area 321")
-                Spacer()
-                Text("DRP Classification: Restricted Distribution")
-            }
-            .font(.system(size: 7)).foregroundColor(.secondary)
-            .padding(.horizontal, 18).padding(.vertical, 5)
-        }
+        Rectangle().fill(dkBlue).frame(height: 1).padding(.horizontal, 18)
     }
 
     // ── Cell helpers ──────────────────────────────────────────────────
     private func pth(_ txt: String, _ w: CGFloat, leftPad: Bool = false) -> some View {
         Text(txt).font(.system(size: 7, weight: .bold)).foregroundColor(.white)
-            .frame(width: w, height: 22, alignment: leftPad ? .leading : .center)
             .padding(.leading, leftPad ? 4 : 0)
+            .frame(width: w, height: 22, alignment: leftPad ? .leading : .center)
             .background(mdBlue).border(dkBlue, width: 0.3)
     }
 
     private func ptd(_ txt: String, _ w: CGFloat, _ color: Color = .primary, left: Bool = false) -> some View {
         Text(txt).font(.system(size: 8)).foregroundColor(color)
+            .padding(.leading, left ? 4 : 0)
             .frame(width: w, height: 20, alignment: left ? .leading : .center)
-            .padding(.leading, left ? 3 : 0)
             .border(Color.gray.opacity(0.2), width: 0.3)
     }
 
