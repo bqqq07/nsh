@@ -942,6 +942,20 @@ struct UserLocationItem {
     let updatedAt: String
 }
 
+struct SafetyOfficerStat: Identifiable {
+    let id: Int
+    let name: String
+    let code: String
+    let checkedIn: Bool
+    let checkinLocation: String?
+    let obsWeek: Int
+    let tbtWeek: Int
+    let nmWeek: Int
+    let totalWeek: Int
+    let locationPkg: Int?
+    let locationUnit: String?
+}
+
 struct NearestPerson: Identifiable {
     let id = UUID()
     let userId: Int
@@ -1593,6 +1607,29 @@ extension NetworkManager {
             let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
                       ?? "فشل إضافة المستخدم"
             throw NSError(domain: "Admin", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+    }
+
+    // ── Safety Supervisor: officers list ──────────────────
+    func getSafetyOfficers() async throws -> [SafetyOfficerStat] {
+        let (data, resp) = try await session.data(for: makeRequest("/api/safety-supervisor/officers"))
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) { return [] }
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let arr = json?["officers"] as? [[String: Any]] ?? []
+        return arr.map { d in
+            SafetyOfficerStat(
+                id: d["id"] as? Int ?? 0,
+                name: d["name"] as? String ?? "",
+                code: d["code"] as? String ?? "",
+                checkedIn: d["checked_in"] as? Bool ?? false,
+                checkinLocation: d["checkin_location"] as? String,
+                obsWeek: d["obs_week"] as? Int ?? 0,
+                tbtWeek: d["tbt_week"] as? Int ?? 0,
+                nmWeek: d["nm_week"] as? Int ?? 0,
+                totalWeek: d["total_week"] as? Int ?? 0,
+                locationPkg: d["location_pkg"] as? Int,
+                locationUnit: d["location_unit"] as? String
+            )
         }
     }
 }

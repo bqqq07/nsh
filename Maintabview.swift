@@ -38,6 +38,8 @@ struct MainTabView: View {
                     hasHseAccess ? AnyView(SiteSupervisorHSETabView()) : AnyView(SiteSupervisorTabView())
                 } else if role == "safety_officer" {
                     AnyView(HSEOfficerTabView())
+                } else if role == "safety_supervisor" {
+                    AnyView(SafetySupervisorTabView())
                 } else {
                     hasHseAccess ? AnyView(HSESupervisorTabView()) : AnyView(SupervisorTabView())
                 }
