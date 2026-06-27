@@ -43,8 +43,8 @@ struct SafetySupMonitorView: View {
         List {
             Section(header: Text("Officers Activity")) {
                 NavigationLink(destination: SafetySupCheckinView()) {
-                    Label("Check-in Today", systemImage: "checkmark.seal.fill")
-                        .foregroundColor(.green)
+                    Label("Locations Today", systemImage: "location.fill")
+                        .foregroundColor(.orange)
                 }
                 NavigationLink(destination: HSEObservationsView()) {
                     Label("Observations", systemImage: "eye.fill")
@@ -79,12 +79,12 @@ struct SafetySupCheckinView: View {
                 Section(header: Text("Summary")) {
                     HStack(spacing: 20) {
                         VStack {
-                            Text("\(checkedIn.count)").font(.title).fontWeight(.bold).foregroundColor(.green)
-                            Text("In").font(.caption).foregroundColor(.secondary)
+                            Text("\(checkedIn.count)").font(.title).fontWeight(.bold).foregroundColor(.orange)
+                            Text("Present").font(.caption).foregroundColor(.secondary)
                         }
                         VStack {
-                            Text("\(notIn.count)").font(.title).fontWeight(.bold).foregroundColor(.red)
-                            Text("Out").font(.caption).foregroundColor(.secondary)
+                            Text("\(notIn.count)").font(.title).fontWeight(.bold).foregroundColor(.secondary)
+                            Text("No Location").font(.caption).foregroundColor(.secondary)
                         }
                         VStack {
                             Text("\(officers.count)").font(.title).fontWeight(.bold)
@@ -96,14 +96,14 @@ struct SafetySupCheckinView: View {
                 }
 
                 if !checkedIn.isEmpty {
-                    Section(header: Text("Checked In (\(checkedIn.count))")) {
+                    Section(header: Text("Present (\(checkedIn.count))")) {
                         ForEach(checkedIn) { o in
                             checkinRow(o, isIn: true)
                         }
                     }
                 }
                 if !notIn.isEmpty {
-                    Section(header: Text("Not In (\(notIn.count))")) {
+                    Section(header: Text("No Location (\(notIn.count))")) {
                         ForEach(notIn) { o in
                             checkinRow(o, isIn: false)
                         }
@@ -111,7 +111,7 @@ struct SafetySupCheckinView: View {
                 }
             }
         }
-        .navigationTitle("Check-in Today")
+        .navigationTitle("Locations Today")
         .refreshable { await load() }
         .task { await load() }
     }
@@ -126,11 +126,11 @@ struct SafetySupCheckinView: View {
                 }
             }
             Spacer()
-            Text(isIn ? "✓ In" : "✗ Out")
+            Text(isIn ? "✓ Present" : "✗ —")
                 .font(.caption).fontWeight(.bold)
                 .padding(.horizontal, 10).padding(.vertical, 4)
-                .background(isIn ? Color.green.opacity(0.15) : Color.red.opacity(0.1))
-                .foregroundColor(isIn ? .green : .red)
+                .background(isIn ? Color.orange.opacity(0.15) : Color.gray.opacity(0.08))
+                .foregroundColor(isIn ? .orange : .secondary)
                 .cornerRadius(8)
         }
     }
