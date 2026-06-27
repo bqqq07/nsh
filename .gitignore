@@ -23,7 +23,6 @@ passenger_wsgi.py
 extensions.py
 AUDIT_*.md
 UI_UX_*.md
-z NSH/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
