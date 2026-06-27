@@ -14,8 +14,8 @@ struct SafetySupervisorTabView: View {
             HSEDashboardView()
                 .tabItem { Label("HSE", systemImage: "shield.checkered") }
 
-            NavigationView { SafetyHSEActivitiesView() }
-                .tabItem { Label("Activities", systemImage: "doc.text.fill") }
+            NavigationView { SafetySupMonitorView() }
+                .tabItem { Label("Activity", systemImage: "list.bullet.clipboard.fill") }
 
             MyRequestsView()
                 .tabItem { Label("Requests", systemImage: "tray.fill") }
@@ -40,64 +40,20 @@ struct SafetySupervisorTabView: View {
     }
 }
 
-// ── HSE Activities list (same as More view but for safety supervisor) ──
-struct SafetyHSEActivitiesView: View {
-    @State private var openCaCount = 0
-
+// ── Monitor tab: Observations, TBT, Check-in lists (all officers) ──
+struct SafetySupMonitorView: View {
     var body: some View {
         List {
-            Section {
-                NavigationLink(destination: HSECheckinView()) {
-                    Label("Check-in", systemImage: "location.fill.viewfinder")
+            Section(header: Text("Officers Activity")) {
+                NavigationLink(destination: SafetySupCheckinView()) {
+                    Label("Check-in Today", systemImage: "checkmark.seal.fill")
                         .foregroundColor(.green)
                 }
-                NavigationLink(destination: UserLocationView()) {
-                    Label("My Location", systemImage: "location.fill")
-                        .foregroundColor(.orange)
-                }
-            }
-            Section(header: Text("HSE Activities")) {
                 NavigationLink(destination: HSEObservationsView()) {
                     Label("Observations", systemImage: "eye.fill")
                 }
-                NavigationLink(destination: HSEJsoView()) {
-                    Label("JSO Closure", systemImage: "doc.badge.plus")
-                }
                 NavigationLink(destination: HSETbtView()) {
                     Label("TBT", systemImage: "person.2.badge.gearshape")
-                }
-                NavigationLink(destination: HSENearMissView()) {
-                    Label("Near Miss", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundColor(.red)
-                }
-                NavigationLink(destination: HSEBbsView()) {
-                    Label("BBS Daily Count", systemImage: "checkmark.circle.fill")
-                }
-                NavigationLink(destination: HSEPtwView()) {
-                    Label("PTW", systemImage: "doc.badge.checkmark")
-                }
-                NavigationLink(destination: HSEManpowerView()) {
-                    Label("Man Power", systemImage: "person.3.fill")
-                }
-                NavigationLink(destination: HSEInspectionView()) {
-                    Label("Inspection", systemImage: "checklist")
-                }
-            }
-            Section {
-                NavigationLink(destination: HSEMyCaView()) {
-                    HStack {
-                        Label("My CAs", systemImage: "list.clipboard.fill")
-                            .foregroundColor(.orange)
-                        Spacer()
-                        if openCaCount > 0 {
-                            Text("\(openCaCount)")
-                                .font(.caption).fontWeight(.bold)
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.orange.opacity(0.15))
-                                .foregroundColor(.orange)
-                                .cornerRadius(10)
-                        }
-                    }
                 }
             }
             Section {
@@ -106,14 +62,86 @@ struct SafetyHSEActivitiesView: View {
                 }
             }
         }
-        .navigationTitle("HSE Activities")
-        .task { await loadCa() }
+        .navigationTitle("Activity")
+    }
+}
+
+// ── Check-in today view for supervisor (shows all officers) ──────────
+struct SafetySupCheckinView: View {
+    @State private var officers: [SafetyOfficerStat] = []
+    @State private var isLoading = true
+
+    private var checkedIn: [SafetyOfficerStat] { officers.filter { $0.checkedIn } }
+    private var notIn:     [SafetyOfficerStat] { officers.filter { !$0.checkedIn } }
+
+    var body: some View {
+        List {
+            if isLoading {
+                Section { ProgressView() }
+            } else {
+                Section(header: Text("Summary")) {
+                    HStack(spacing: 20) {
+                        VStack {
+                            Text("\(checkedIn.count)").font(.title).fontWeight(.bold).foregroundColor(.green)
+                            Text("In").font(.caption).foregroundColor(.secondary)
+                        }
+                        VStack {
+                            Text("\(notIn.count)").font(.title).fontWeight(.bold).foregroundColor(.red)
+                            Text("Out").font(.caption).foregroundColor(.secondary)
+                        }
+                        VStack {
+                            Text("\(officers.count)").font(.title).fontWeight(.bold)
+                            Text("Total").font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                }
+
+                if !checkedIn.isEmpty {
+                    Section(header: Text("Checked In (\(checkedIn.count))")) {
+                        ForEach(checkedIn) { o in
+                            checkinRow(o, isIn: true)
+                        }
+                    }
+                }
+                if !notIn.isEmpty {
+                    Section(header: Text("Not In (\(notIn.count))")) {
+                        ForEach(notIn) { o in
+                            checkinRow(o, isIn: false)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Check-in Today")
+        .refreshable { await load() }
+        .task { await load() }
     }
 
-    private func loadCa() async {
-        if let items = try? await NetworkManager.shared.hseMyCa() {
-            openCaCount = items.filter { $0.status != "completed" }.count
+    @ViewBuilder
+    private func checkinRow(_ o: SafetyOfficerStat, isIn: Bool) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(o.name.isEmpty ? o.code : o.name).font(.headline)
+                if let loc = o.checkinLocation, !loc.isEmpty {
+                    Text("📍 \(loc)").font(.caption).foregroundColor(.secondary)
+                }
+            }
+            Spacer()
+            Text(isIn ? "✓ In" : "✗ Out")
+                .font(.caption).fontWeight(.bold)
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(isIn ? Color.green.opacity(0.15) : Color.red.opacity(0.1))
+                .foregroundColor(isIn ? .green : .red)
+                .cornerRadius(8)
         }
+    }
+
+    private func load() async {
+        isLoading = true
+        officers = (try? await NetworkManager.shared.getSafetyOfficers()) ?? []
+        isLoading = false
     }
 }
 

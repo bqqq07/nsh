@@ -658,6 +658,7 @@ struct HseObservationItem: Codable, Identifiable {
     let closed_at:      String?
     let closure_action: String
     let photos:         [HseObsPhoto]?
+    let officer_name:   String?
 }
 
 struct HseObservationsResponse: Codable {
@@ -695,6 +696,7 @@ struct HseTbtItem: Codable, Identifiable {
     let location:        String
     let supervisor_name: String?
     let supervisor_role: String?
+    let officer_name:    String?
     let attendee_count:  Int
     let attendees:       [HseTbtAttendee]
 

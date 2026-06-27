@@ -457,6 +457,9 @@ struct ObsRow: View {
             if !obs.location.isEmpty {
                 Text("📍 " + obs.location).font(.caption).foregroundColor(.secondary)
             }
+            if let name = obs.officer_name, !name.isEmpty {
+                Text("👷 " + name).font(.caption).foregroundColor(.purple)
+            }
             if !obs.description.isEmpty {
                 Text(obs.description).font(.caption).lineLimit(2).foregroundColor(.secondary)
             }
@@ -950,6 +953,9 @@ struct HSETbtView: View {
                                             .padding(.horizontal, 8).padding(.vertical, 2)
                                             .background(Color.blue.opacity(0.1))
                                             .foregroundColor(.blue).cornerRadius(8)
+                                    }
+                                    if let name = t.officer_name, !name.isEmpty {
+                                        Text("👷 " + name).font(.caption).foregroundColor(.purple)
                                     }
                                 }
                                 .padding(.vertical, 4)
