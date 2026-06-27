@@ -1,3 +1,30 @@
+# ── Non-iOS folders ──
+android/
+templates/
+static/
+blueprints/
+models/
+*.py
+*.php
+*.html
+*.zip
+*.log
+.env*
+.config/
+.local/
+.well-known/
+tmp/
+dev/
+appp/
+requirements.txt
+pyproject.toml
+uv.lock
+passenger_wsgi.py
+extensions.py
+AUDIT_*.md
+UI_UX_*.md
+z NSH/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
