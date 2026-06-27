@@ -1059,11 +1059,12 @@ struct HSETbtDetailView: View {
     @MainActor private func exportPdf() async {
         pdfBusy = true
         pdfShareUrl = await makeTbtPdf(
-            topic:          tbt.topic,
-            date:           tbt.date,
-            location:       tbt.location,
-            supervisorName: tbt.supervisor_name ?? "",
-            attendees:      tbt.attendees.map { ($0.emp_name, $0.emp_number) }
+            topic:              tbt.topic,
+            date:               tbt.date,
+            location:           tbt.location,
+            supervisorName:     tbt.supervisor_name ?? "",
+            supervisorPosition: tbt.supervisorPositionLabel,
+            attendees:          tbt.attendees.map { ($0.emp_name, $0.emp_number) }
         )
         pdfBusy = false
     }
@@ -2724,11 +2725,12 @@ struct HSETbtDetailSheet: View {
         pdfBusy = true
         let list = tbt.attendees ?? []
         pdfShareUrl = await makeTbtPdf(
-            topic:          tbt.topic,
-            date:           tbt.date,
-            location:       tbt.location,
-            supervisorName: tbt.supervisor_name ?? "",
-            attendees:      list.map { ($0.emp_name, $0.emp_number) }
+            topic:              tbt.topic,
+            date:               tbt.date,
+            location:           tbt.location,
+            supervisorName:     tbt.supervisor_name ?? "",
+            supervisorPosition: tbt.supervisorPositionLabel,
+            attendees:          list.map { ($0.emp_name, $0.emp_number) }
         )
         pdfBusy = false
     }
@@ -4498,6 +4500,7 @@ func makeTbtPdf(
     date: String,
     location: String,
     supervisorName: String,
+    supervisorPosition: String = "Supervisor",
     attendees: [(name: String, badge: String)]
 ) async -> URL? {
     // Fetch company logo
@@ -4509,7 +4512,8 @@ func makeTbtPdf(
 
     let layout = HSETbtPdfLayout(
         topic: topic, date: date, location: location,
-        supervisorName: supervisorName, attendees: attendees, logo: logo
+        supervisorName: supervisorName, supervisorPosition: supervisorPosition,
+        attendees: attendees, logo: logo
     )
 
     let renderer = ImageRenderer(content: layout)
@@ -4561,12 +4565,13 @@ func makeTbtPdf(
 // ── PDF Layout (A4 width = 595 pt) ───────────────────────────────────
 
 struct HSETbtPdfLayout: View {
-    let topic:          String
-    let date:           String
-    let location:       String
-    let supervisorName: String
-    let attendees:      [(name: String, badge: String)]
-    let logo:           UIImage?
+    let topic:               String
+    let date:                String
+    let location:            String
+    let supervisorName:      String
+    let supervisorPosition:  String
+    let attendees:           [(name: String, badge: String)]
+    let logo:                UIImage?
 
     // Column widths for attendees table
     private let colNo:  CGFloat = 28
@@ -4654,7 +4659,7 @@ struct HSETbtPdfLayout: View {
             // Data row
             HStack(spacing: 0) {
                 tdCell(supervisorName.isEmpty ? "—" : supervisorName, flex: true)
-                tdCell("Safety Supervisor",  w: 110)
+                tdCell(supervisorPosition.isEmpty ? "Supervisor" : supervisorPosition, w: 110)
                 tdCell("NSH",               w: 80)
                 tdCell("",                  w: 85, minH: 28)
             }

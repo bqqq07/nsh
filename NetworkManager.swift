@@ -694,8 +694,19 @@ struct HseTbtItem: Codable, Identifiable {
     let topic:           String
     let location:        String
     let supervisor_name: String?
+    let supervisor_role: String?
     let attendee_count:  Int
     let attendees:       [HseTbtAttendee]
+
+    var supervisorPositionLabel: String {
+        switch supervisor_role ?? "" {
+        case "supervisor":           return "Supervisor"
+        case "site_supervisor":      return "Site Supervisor"
+        case "safety_officer":       return "Safety Officer"
+        case "admin", "super_admin": return "Admin"
+        default:                     return "Supervisor"
+        }
+    }
 }
 
 struct HseTbtResponse: Codable {
@@ -830,8 +841,19 @@ struct HseTbtDetailItem: Codable, Identifiable {
     let location:        String
     let sign_photo_path: String?
     let supervisor_name: String?
+    let supervisor_role: String?
     let attendee_count:  Int
     let attendees:       [HseTbtAttendee]?
+
+    var supervisorPositionLabel: String {
+        switch supervisor_role ?? "" {
+        case "supervisor":      return "Supervisor"
+        case "site_supervisor": return "Site Supervisor"
+        case "safety_officer":  return "Safety Officer"
+        case "admin", "super_admin": return "Admin"
+        default: return "Supervisor"
+        }
+    }
 }
 
 struct HseOfficerInfo: Codable {
