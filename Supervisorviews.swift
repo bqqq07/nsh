@@ -909,6 +909,10 @@ struct SupervisorHomeView: View {
         employees.filter { !weeklyDone.contains($0.id) }
     }
 
+    private var weekCoveragePct: Double {
+        employees.isEmpty ? 0 : Double(weeklyDone.count) / Double(employees.count) * 100
+    }
+
     private var isEndOfWeek: Bool {
         let weekday = Calendar.current.component(.weekday, from: Date())
         return weekday == 4 || weekday == 5
@@ -1015,8 +1019,7 @@ struct SupervisorHomeView: View {
                             // ── شريط تقدم ──
                             VStack(alignment: .trailing, spacing: 8) {
                                 HStack {
-                                    Text(String(format: "%.0f%%", employees.isEmpty ? 0 :
-                                            Double(weeklyDone.count) / Double(employees.count) * 100))
+                                    Text(String(format: "%.0f%%", weekCoveragePct))
                                         .font(.caption.bold())
                                         .foregroundColor(Color(hex: "#4f8ef7"))
                                     Spacer()
@@ -1024,13 +1027,12 @@ struct SupervisorHomeView: View {
                                         .font(.caption).foregroundColor(.secondary)
                                 }
                                 GeometryReader { geo in
+                                    let ratio = employees.isEmpty ? 0.0 : CGFloat(weeklyDone.count) / CGFloat(employees.count)
                                     ZStack(alignment: .trailing) {
                                         RoundedRectangle(cornerRadius: 6).fill(Color(hex: "#ecf0f1")).frame(height: 10)
                                         RoundedRectangle(cornerRadius: 6)
                                             .fill(Color(hex: "#4f8ef7"))
-                                            .frame(width: employees.isEmpty ? 0 :
-                                                    geo.size.width * CGFloat(weeklyDone.count) / CGFloat(employees.count),
-                                                   height: 10)
+                                            .frame(width: geo.size.width * ratio, height: 10)
                                     }
                                 }
                                 .frame(height: 10)

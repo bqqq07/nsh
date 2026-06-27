@@ -11,7 +11,8 @@
 		A200000100000000000002AA /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000002AA /* ContentView.swift */; };
 		A200000100000000000003AA /* Loginview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000003AA /* Loginview.swift */; };
 		A200000100000000000004AA /* Maintabview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000004AA /* Maintabview.swift */; };
-		A200000100000000000005AA /* Networkmanager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000005AA /* Networkmanager.swift */; };
+		A200000100000000000005AA /* NetworkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000005AA /* NetworkManager.swift */; };
+		A200000100000000000013AA /* LocationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000013AA /* LocationViews.swift */; };
 		A200000100000000000006AA /* HSEViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000006AA /* HSEViews.swift */; };
 		A200000100000000000007AA /* Supervisorviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000007AA /* Supervisorviews.swift */; };
 		A200000100000000000008AA /* SiteSupervisorViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000008AA /* SiteSupervisorViews.swift */; };
@@ -31,7 +32,8 @@
 		A100000100000000000002AA /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A100000100000000000003AA /* Loginview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Loginview.swift; sourceTree = "<group>"; };
 		A100000100000000000004AA /* Maintabview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Maintabview.swift; sourceTree = "<group>"; };
-		A100000100000000000005AA /* Networkmanager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Networkmanager.swift; sourceTree = "<group>"; };
+		A100000100000000000005AA /* NetworkManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkManager.swift; sourceTree = "<group>"; };
+		A100000100000000000013AA /* LocationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationViews.swift; sourceTree = "<group>"; };
 		A100000100000000000006AA /* HSEViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HSEViews.swift; sourceTree = "<group>"; };
 		A100000100000000000007AA /* Supervisorviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Supervisorviews.swift; sourceTree = "<group>"; };
 		A100000100000000000008AA /* SiteSupervisorViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiteSupervisorViews.swift; sourceTree = "<group>"; };
@@ -74,7 +76,8 @@
 				A100000100000000000002AA /* ContentView.swift */,
 				A100000100000000000003AA /* Loginview.swift */,
 				A100000100000000000004AA /* Maintabview.swift */,
-				A100000100000000000005AA /* Networkmanager.swift */,
+				A100000100000000000005AA /* NetworkManager.swift */,
+				A100000100000000000013AA /* LocationViews.swift */,
 				A100000100000000000006AA /* HSEViews.swift */,
 				A100000100000000000007AA /* Supervisorviews.swift */,
 				A100000100000000000008AA /* SiteSupervisorViews.swift */,
@@ -173,7 +176,8 @@
 				A200000100000000000002AA /* ContentView.swift in Sources */,
 				A200000100000000000003AA /* Loginview.swift in Sources */,
 				A200000100000000000004AA /* Maintabview.swift in Sources */,
-				A200000100000000000005AA /* Networkmanager.swift in Sources */,
+				A200000100000000000005AA /* NetworkManager.swift in Sources */,
+				A200000100000000000013AA /* LocationViews.swift in Sources */,
 				A200000100000000000006AA /* HSEViews.swift in Sources */,
 				A200000100000000000007AA /* Supervisorviews.swift in Sources */,
 				A200000100000000000008AA /* SiteSupervisorViews.swift in Sources */,
