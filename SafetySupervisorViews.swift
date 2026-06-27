@@ -11,9 +11,6 @@ struct SafetySupervisorTabView: View {
             SafetySupervisorHomeView()
                 .tabItem { Label("Officers", systemImage: "person.3.fill") }
 
-            HSEDashboardView()
-                .tabItem { Label("HSE", systemImage: "shield.checkered") }
-
             NavigationView { SafetySupMonitorView() }
                 .tabItem { Label("Activity", systemImage: "list.bullet.clipboard.fill") }
 
@@ -21,7 +18,7 @@ struct SafetySupervisorTabView: View {
                 .tabItem { Label("Requests", systemImage: "tray.fill") }
                 .badge(pendingRequests)
 
-            UserLocationView()
+            NavigationView { UserLocationView() }
                 .tabItem { Label("Location", systemImage: "location.fill") }
         }
         .accentColor(Color(hex: "#16a34a"))
