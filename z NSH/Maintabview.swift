@@ -77,11 +77,11 @@ struct AdminHSETabView: View {
             HSEDashboardView()
                 .tabItem { Label("HSE", systemImage: "shield.checkered") }
 
+            UserLocationView()
+                .tabItem { Label("Locations", systemImage: "location.fill") }
+
             EmployeesListView()
                 .tabItem { Label("الموظفون", systemImage: "person.2.fill") }
-
-            AdminReportsView()
-                .tabItem { Label("التقارير", systemImage: "chart.line.uptrend.xyaxis") }
 
             NavigationView { AdminManagementView() }
                 .tabItem { Label("إدارة", systemImage: "gearshape.2.fill") }

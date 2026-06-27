@@ -4302,7 +4302,7 @@ struct QuickAccessButton: View {
 // ═══════════════════════════════════════════════════
 
 struct HSEOfficerHomeView: View {
-    @State private var checkin:    HseCheckinItem?    = nil
+    @State private var myLocation: UserLocationItem?  = nil
     @State private var manpower:   HseManpowerItem?   = nil
     @State private var inspection: HseInspectionItem? = nil
     @State private var myCas:      [HseCaItem]        = []
@@ -4364,8 +4364,9 @@ struct HSEOfficerHomeView: View {
             Text(todayDate)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-            if let loc = checkin?.location, !loc.isEmpty {
-                Label(loc, systemImage: "mappin.circle.fill")
+            if let loc = myLocation {
+                Label("PKG \(loc.pkg) · Unit \(loc.unit)\(loc.areaText.isEmpty ? "" : " — \(loc.areaText)")",
+                      systemImage: "mappin.circle.fill")
                     .font(.subheadline)
                     .foregroundColor(.green)
             }
@@ -4380,12 +4381,12 @@ struct HSEOfficerHomeView: View {
 
     var dailyTasksGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            NavigationLink(destination: HSECheckinView()) {
+            NavigationLink(destination: UserLocationView()) {
                 DailyTaskCard(
-                    title: "تسجيل الدخول",
+                    title: "My Location",
                     icon: "location.fill",
-                    status: checkin != nil ? .done : .required,
-                    detail: checkin?.location ?? "لم يُسجَّل بعد"
+                    status: myLocation != nil ? .done : .required,
+                    detail: myLocation.map { "PKG \($0.pkg) · Unit \($0.unit)" } ?? "Not registered"
                 )
             }
 
@@ -4465,12 +4466,12 @@ struct HSEOfficerHomeView: View {
 
     func loadAll() async {
         isLoading = true
-        async let c  = try? NetworkManager.shared.hseCheckinToday()
-        async let m  = try? NetworkManager.shared.hseManpowerToday()
-        async let i  = try? NetworkManager.shared.hseInspectionToday()
-        async let ca = try? NetworkManager.shared.hseMyCa()
-        async let p  = try? NetworkManager.shared.hsePtwList()
-        checkin    = await c
+        async let loc = try? NetworkManager.shared.getMyLocation()
+        async let m   = try? NetworkManager.shared.hseManpowerToday()
+        async let i   = try? NetworkManager.shared.hseInspectionToday()
+        async let ca  = try? NetworkManager.shared.hseMyCa()
+        async let p   = try? NetworkManager.shared.hsePtwList()
+        myLocation = await loc
         manpower   = await m
         inspection = await i
         myCas      = await ca ?? []
