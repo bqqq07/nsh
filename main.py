@@ -7027,12 +7027,12 @@ def api_site_supervisors():
 def api_site_supervisor_report(sup_id):
     """تقرير مشرف محدد — يعيد قائمة تقييماته"""
     u = get_api_user()
-    if not u or u.role != "site_supervisor":
+    if not u or u.role not in ("site_supervisor", "admin", "super_admin"):
         return jsonify(error="forbidden"), 403
-
-    link = SiteSupervisorMap.query.filter_by(site_sup_id=u.id, supervisor_id=sup_id).first()
-    if not link:
-        return jsonify(error="forbidden"), 403
+    if u.role == "site_supervisor":
+        link = SiteSupervisorMap.query.filter_by(site_sup_id=u.id, supervisor_id=sup_id).first()
+        if not link:
+            return jsonify(error="forbidden"), 403
 
     ws_str = request.args.get("week_start")
     we_str = request.args.get("week_end")
@@ -7200,12 +7200,12 @@ def api_site_attendance():
 def api_site_supervisor_employees(sup_id):
     """موظفو مشرف محدد مع حالة تقييمهم الأسبوعي"""
     u = get_api_user()
-    if not u or u.role != "site_supervisor":
+    if not u or u.role not in ("site_supervisor", "admin", "super_admin"):
         return jsonify(error="forbidden"), 403
-
-    link = SiteSupervisorMap.query.filter_by(site_sup_id=u.id, supervisor_id=sup_id).first()
-    if not link:
-        return jsonify(error="forbidden"), 403
+    if u.role == "site_supervisor":
+        link = SiteSupervisorMap.query.filter_by(site_sup_id=u.id, supervisor_id=sup_id).first()
+        if not link:
+            return jsonify(error="forbidden"), 403
 
     ws, we = default_week_today()
     employees = Employee.query.filter_by(user_id=sup_id, is_active=True).order_by(Employee.name).all()
@@ -7281,6 +7281,74 @@ def api_site_reports_summary():
         "not_evaluated_count": len(not_evaluated),
         "not_evaluated":  [emp_row(e) for e in not_evaluated],
         "evaluated":      [emp_row(e, eval_map[e.id]) for e in evaluated],
+    })
+
+
+@app.get("/api/site/tbt")
+@api_login_required
+def api_site_tbt():
+    """جلسات TBT التي أجراها سيفتي أوفسر لمشرفي الـ site supervisor"""
+    u = get_api_user()
+    if not u or u.role not in ("site_supervisor", "admin", "super_admin"):
+        return jsonify(error="forbidden"), 403
+    links = (db.session.query(SiteSupervisorMap, User)
+             .join(User, SiteSupervisorMap.supervisor_id == User.id)
+             .filter(SiteSupervisorMap.site_sup_id == u.id).all())
+    sup_ids = [su.id for _, su in links]
+    sup_map = {su.id: su.name for _, su in links}
+    if not sup_ids:
+        return jsonify([])
+    # آخر 30 يوم بشكل افتراضي، أو حسب المرسل
+    days = int(request.args.get("days", 30))
+    since = datetime.now(RIYADH_TZ).date() - timedelta(days=days)
+    tbts = (HseTbt.query
+            .filter(HseTbt.supervisor_id.in_(sup_ids))
+            .filter(HseTbt.date >= since)
+            .order_by(HseTbt.date.desc())
+            .all())
+    result = []
+    for t in tbts:
+        officer = User.query.get(t.officer_id)
+        att_count = HseTbtAttendance.query.filter_by(tbt_id=t.id).count()
+        result.append({
+            "id":              t.id,
+            "date":            str(t.date),
+            "topic":           t.topic or "",
+            "location":        t.location or "",
+            "supervisor_id":   t.supervisor_id,
+            "supervisor_name": sup_map.get(t.supervisor_id, ""),
+            "officer_name":    officer.name if officer else "",
+            "attendee_count":  att_count,
+        })
+    return jsonify(result)
+
+
+@app.get("/api/site/tbt/<int:tbt_id>")
+@api_login_required
+def api_site_tbt_detail(tbt_id):
+    """تفاصيل جلسة TBT مع قائمة الحضور"""
+    u = get_api_user()
+    if not u or u.role not in ("site_supervisor", "admin", "super_admin"):
+        return jsonify(error="forbidden"), 403
+    t = HseTbt.query.get_or_404(tbt_id)
+    # تحقق أن المشرف المرتبط بالـ TBT تابع للـ site supervisor
+    if u.role == "site_supervisor":
+        link = SiteSupervisorMap.query.filter_by(
+            site_sup_id=u.id, supervisor_id=t.supervisor_id).first()
+        if not link:
+            return jsonify(error="forbidden"), 403
+    officer = User.query.get(t.officer_id)
+    supervisor = User.query.get(t.supervisor_id) if t.supervisor_id else None
+    attendees = HseTbtAttendance.query.filter_by(tbt_id=t.id).all()
+    return jsonify({
+        "id":              t.id,
+        "date":            str(t.date),
+        "topic":           t.topic or "",
+        "location":        t.location or "",
+        "officer_name":    officer.name if officer else "",
+        "supervisor_name": supervisor.name if supervisor else "",
+        "attendees": [{"emp_number": a.emp_number, "emp_name": a.emp_name}
+                      for a in attendees],
     })
 
 

@@ -556,6 +556,25 @@ extension NetworkManager {
         return try JSONDecoder().decode([SiteRequestRow].self, from: data)
     }
 
+    func getSiteTbtList(days: Int = 30) async throws -> [SiteTbtRow] {
+        let (data, _) = try await session.data(for: makeRequest("/api/site/tbt?days=\(days)"))
+        return try JSONDecoder().decode([SiteTbtRow].self, from: data)
+    }
+
+    func getSiteTbtDetail(id: Int) async throws -> SiteTbtDetail {
+        let (data, _) = try await session.data(for: makeRequest("/api/site/tbt/\(id)"))
+        return try JSONDecoder().decode(SiteTbtDetail.self, from: data)
+    }
+
+    func getSiteSupEval(supId: Int, weekStart: String? = nil, weekEnd: String? = nil) async throws -> SiteSupEvalData {
+        var path = "/api/site/supervisor/\(supId)/report"
+        if let ws = weekStart, let we = weekEnd {
+            path += "?week_start=\(ws)&week_end=\(we)"
+        }
+        let (data, _) = try await session.data(for: makeRequest(path))
+        return try JSONDecoder().decode(SiteSupEvalData.self, from: data)
+    }
+
     func getUnassignedEmployees() async throws -> [UnassignedEmployee] {
         let (data, _) = try await session.data(for: makeRequest("/api/employees/unassigned"))
         return try JSONDecoder().decode([UnassignedEmployee].self, from: data)

@@ -121,6 +121,68 @@ struct SiteRequestRow: Codable, Identifiable {
     }
 }
 
+struct SiteTbtRow: Codable, Identifiable {
+    let id:               Int
+    let date:             String
+    let topic:            String
+    let location:         String
+    let supervisor_id:    Int
+    let supervisor_name:  String
+    let officer_name:     String
+    let attendee_count:   Int
+}
+
+struct SiteTbtDetail: Codable {
+    let id:               Int
+    let date:             String
+    let topic:            String
+    let location:         String
+    let officer_name:     String
+    let supervisor_name:  String
+    let attendees:        [SiteTbtAttendee]
+}
+
+struct SiteTbtAttendee: Codable, Identifiable {
+    let emp_number: String
+    let emp_name:   String
+    var id: String { emp_number }
+}
+
+struct SiteSupEvalData: Codable {
+    let supervisor:  SiteSupRef
+    let week_start:  String
+    let week_end:    String
+    let evaluation:  SiteEvalDetail?
+}
+struct SiteSupRef: Codable {
+    let id: Int; let name: String; let code: String
+}
+struct SiteEvalDetail: Codable {
+    let targets_score:   Double?
+    let perf_score:      Double?
+    let total_score:     Double?
+    let overall_band:    String?
+    let targets:         [SiteEvalTarget]
+    let performance:     SiteEvalPerf
+    let strengths:       String?
+    let improvements:    String?
+    let training_needed: String?
+}
+struct SiteEvalTarget: Codable {
+    let text: String?; let percent: Double?; let remarks: String?
+}
+struct SiteEvalPerf: Codable {
+    let punctuality:    SiteEvalPerfItem?
+    let quality:        SiteEvalPerfItem?
+    let productivity:   SiteEvalPerfItem?
+    let communication:  SiteEvalPerfItem?
+    let problemsolving: SiteEvalPerfItem?
+    let compliance:     SiteEvalPerfItem?
+}
+struct SiteEvalPerfItem: Codable {
+    let score: Double?; let comment: String?
+}
+
 // ═══════════════════════════════════════════════════
 //  MARK: - Network Extensions
 // ═══════════════════════════════════════════════════
@@ -159,19 +221,30 @@ struct SiteMoreView: View {
     var body: some View {
         NavigationView {
             List {
-                NavigationLink(destination: SiteRequestsView()) {
-                    Label("الطلبات", systemImage: "tray.full.fill")
-                }
-                NavigationLink(destination: SiteUnassignedView()) {
-                    Label("الموظفون المعلقون", systemImage: "person.fill.questionmark")
-                }
-                if showHSE {
-                    NavigationLink(destination: HSEDashboardView()) {
-                        Label("HSE", systemImage: "shield.checkered")
+                Section {
+                    NavigationLink(destination: SiteTbtAllView()) {
+                        Label("جلسات TBT", systemImage: "person.2.badge.gearshape")
+                            .foregroundColor(.blue)
+                    }
+                    NavigationLink(destination: SiteRequestsView()) {
+                        Label("الطلبات", systemImage: "tray.full.fill")
+                    }
+                    NavigationLink(destination: SiteUnassignedView()) {
+                        Label("الموظفون المعلقون", systemImage: "person.fill.questionmark")
                     }
                 }
-                NavigationLink(destination: ProfileView()) {
-                    Label("حسابي", systemImage: "person.circle")
+                if showHSE {
+                    Section {
+                        NavigationLink(destination: HSEDashboardView()) {
+                            Label("HSE Dashboard", systemImage: "shield.checkered")
+                                .foregroundColor(.green)
+                        }
+                    }
+                }
+                Section {
+                    NavigationLink(destination: ProfileView()) {
+                        Label("حسابي", systemImage: "person.circle")
+                    }
                 }
             }
             .navigationTitle("المزيد")
@@ -348,7 +421,7 @@ struct SiteSupervisorsListView: View {
                 Spacer(); ProgressView(); Spacer()
             } else {
                 List(filtered) { sup in
-                    NavigationLink(destination: SiteSupEmployeesView(supervisor: sup)) {
+                    NavigationLink(destination: SiteSupDetailView(supervisor: sup)) {
                         SiteSupRowView(sup: sup)
                     }
                     .listRowSeparator(.hidden)
@@ -481,6 +554,352 @@ struct SiteSupEmployeesView: View {
         } catch {
             employees = []
         }
+        loading = false
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  MARK: - Supervisor Detail (تقرير + موظفون + TBT)
+// ═══════════════════════════════════════════════════
+struct SiteSupDetailView: View {
+    let supervisor: SiteSupRow
+    @State private var selectedTab = 0
+    @State private var employees:  [SiteEmpRow]     = []
+    @State private var tbts:       [SiteTbtRow]      = []
+    @State private var evalData:   SiteSupEvalData?
+    @State private var loading     = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Tab selector
+            Picker("", selection: $selectedTab) {
+                Text("الموظفون").tag(0)
+                Text("التقرير الأسبوعي").tag(1)
+                Text("TBT").tag(2)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal).padding(.vertical, 8)
+            .background(Color.white)
+
+            if loading {
+                Spacer(); ProgressView(); Spacer()
+            } else {
+                switch selectedTab {
+                case 0: employeesTab
+                case 1: evalTab
+                default: tbtTab
+                }
+            }
+        }
+        .background(Color(hex: "#F0F2FF"))
+        .navigationTitle(supervisor.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await loadAll() }
+        .refreshable { await loadAll() }
+    }
+
+    // ── Employees Tab ──
+    var employeesTab: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                SiteAttBadge(label: "تقييم", count: employees.filter { $0.evaluated }.count, color: .green)
+                SiteAttBadge(label: "متبقي", count: employees.filter { !$0.evaluated }.count, color: .orange)
+                SiteAttBadge(label: "الكل",  count: employees.count, color: .purple)
+            }.padding(.vertical, 8)
+            List(employees) { emp in
+                SiteEmpRowView(emp: emp)
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+            }
+            .listStyle(.plain)
+        }
+    }
+
+    // ── Evaluation Tab ──
+    var evalTab: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                if let ev = evalData?.evaluation {
+                    // Score card
+                    HStack(spacing: 16) {
+                        scoreCircle(value: ev.total_score, label: "المجموع", color: scoreColor(ev.total_score))
+                        scoreCircle(value: ev.targets_score, label: "الأهداف", color: .blue)
+                        scoreCircle(value: ev.perf_score, label: "الأداء", color: .purple)
+                    }
+                    .padding()
+                    .background(Color.white).cornerRadius(12)
+                    .padding(.horizontal)
+
+                    // Targets
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text("الأهداف").font(.headline)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding()
+                        Divider()
+                        ForEach(Array(ev.targets.enumerated()), id: \.0) { i, t in
+                            if let txt = t.text, !txt.isEmpty {
+                                HStack {
+                                    Text("\(Int(t.percent ?? 0))%").fontWeight(.bold)
+                                        .foregroundColor(.blue).frame(width: 44)
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(txt).font(.subheadline)
+                                        if let r = t.remarks, !r.isEmpty {
+                                            Text(r).font(.caption).foregroundColor(.secondary)
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal).padding(.vertical, 8)
+                                if i < ev.targets.count - 1 { Divider() }
+                            }
+                        }
+                    }
+                    .background(Color.white).cornerRadius(12)
+                    .padding(.horizontal)
+
+                    // Performance
+                    let perfItems: [(String, SiteEvalPerfItem?)] = [
+                        ("الانضباط", ev.performance.punctuality),
+                        ("الجودة", ev.performance.quality),
+                        ("الإنتاجية", ev.performance.productivity),
+                        ("التواصل", ev.performance.communication),
+                        ("حل المشكلات", ev.performance.problemsolving),
+                        ("الامتثال", ev.performance.compliance),
+                    ]
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text("الأداء").font(.headline)
+                            .frame(maxWidth: .infinity, alignment: .trailing).padding()
+                        Divider()
+                        ForEach(Array(perfItems.enumerated()), id: \.0) { i, pair in
+                            if let item = pair.1 {
+                                HStack {
+                                    Text("\(Int(item.score ?? 0))").fontWeight(.bold)
+                                        .foregroundColor(.purple).frame(width: 32)
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(pair.0).font(.subheadline)
+                                        if let c = item.comment, !c.isEmpty {
+                                            Text(c).font(.caption).foregroundColor(.secondary)
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal).padding(.vertical, 8)
+                                if i < perfItems.count - 1 { Divider() }
+                            }
+                        }
+                    }
+                    .background(Color.white).cornerRadius(12)
+                    .padding(.horizontal)
+
+                    // Notes
+                    if let s = ev.strengths, !s.isEmpty {
+                        noteCard(title: "نقاط القوة", text: s, color: .green)
+                    }
+                    if let i = ev.improvements, !i.isEmpty {
+                        noteCard(title: "مجالات التطوير", text: i, color: .orange)
+                    }
+                    if let t = ev.training_needed, !t.isEmpty {
+                        noteCard(title: "احتياجات التدريب", text: t, color: .blue)
+                    }
+                } else {
+                    VStack(spacing: 12) {
+                        Image(systemName: "doc.text").font(.largeTitle).foregroundColor(.secondary)
+                        Text("لم يُقيَّم هذا الأسبوع بعد").foregroundColor(.secondary)
+                    }.padding(.top, 60)
+                }
+            }
+            .padding(.vertical)
+        }
+    }
+
+    // ── TBT Tab ──
+    var tbtTab: some View {
+        let supTbts = tbts.filter { $0.supervisor_id == supervisor.id }
+        return Group {
+            if supTbts.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "person.2.badge.gearshape").font(.largeTitle).foregroundColor(.secondary)
+                    Text("لا توجد جلسات TBT لهذا المشرف").foregroundColor(.secondary)
+                }.padding(.top, 60)
+                .frame(maxWidth: .infinity)
+            } else {
+                List(supTbts) { t in
+                    NavigationLink(destination: SiteTbtDetailView(tbtId: t.id)) {
+                        SiteTbtRowView(tbt: t, showSup: false)
+                    }
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+                }
+                .listStyle(.plain)
+            }
+        }
+    }
+
+    // ── Helpers ──
+    private func scoreCircle(value: Double?, label: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(value.map { String(format: "%.1f", $0) } ?? "—")
+                .font(.title2).fontWeight(.bold).foregroundColor(color)
+            Text(label).font(.caption).foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func noteCard(title: String, text: String, color: Color) -> some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            Text(title).font(.subheadline).fontWeight(.semibold).foregroundColor(color)
+            Text(text).font(.body).frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding()
+        .background(Color.white).cornerRadius(12)
+        .padding(.horizontal)
+    }
+
+    private func scoreColor(_ v: Double?) -> Color {
+        guard let v = v else { return .secondary }
+        if v >= 80 { return .green } else if v >= 60 { return .orange } else { return .red }
+    }
+
+    private func loadAll() async {
+        loading = true
+        async let empsTask  = NetworkManager.shared.getSiteSupEmployees(supId: supervisor.id)
+        async let tbtsTask  = NetworkManager.shared.getSiteTbtList(days: 90)
+        async let evalTask  = NetworkManager.shared.getSiteSupEval(supId: supervisor.id)
+        employees = (try? await empsTask)  ?? []
+        tbts      = (try? await tbtsTask)  ?? []
+        evalData  = try? await evalTask
+        loading = false
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  MARK: - TBT Global List
+// ═══════════════════════════════════════════════════
+struct SiteTbtAllView: View {
+    @State private var tbts:    [SiteTbtRow] = []
+    @State private var loading  = true
+    @State private var days     = 30
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("الفترة", selection: $days) {
+                Text("30 يوم").tag(30)
+                Text("60 يوم").tag(60)
+                Text("90 يوم").tag(90)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(Color.white)
+            .onChange(of: days) { _ in Task { await load() } }
+
+            if loading {
+                Spacer(); ProgressView(); Spacer()
+            } else if tbts.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "person.2.badge.gearshape").font(.largeTitle).foregroundColor(.secondary)
+                    Text("لا توجد جلسات TBT خلال هذه الفترة").foregroundColor(.secondary)
+                }.padding(.top, 60).frame(maxWidth: .infinity)
+            } else {
+                List(tbts) { t in
+                    NavigationLink(destination: SiteTbtDetailView(tbtId: t.id)) {
+                        SiteTbtRowView(tbt: t, showSup: true)
+                    }
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+                }
+                .listStyle(.plain)
+                .background(Color(hex: "#F0F2FF"))
+            }
+        }
+        .background(Color(hex: "#F0F2FF"))
+        .navigationTitle("جلسات TBT")
+        .task { await load() }
+        .refreshable { await load() }
+    }
+
+    private func load() async {
+        loading = true
+        tbts = (try? await NetworkManager.shared.getSiteTbtList(days: days)) ?? []
+        loading = false
+    }
+}
+
+struct SiteTbtRowView: View {
+    let tbt: SiteTbtRow
+    let showSup: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .center, spacing: 2) {
+                Text(String(tbt.date.prefix(7).suffix(2))).font(.headline).fontWeight(.bold)
+                Text(String(tbt.date.prefix(4))).font(.caption2).foregroundColor(.secondary)
+            }
+            .frame(width: 36)
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(tbt.topic.isEmpty ? "TBT" : tbt.topic)
+                    .font(.subheadline).fontWeight(.semibold)
+                if showSup && !tbt.supervisor_name.isEmpty {
+                    Text("مشرف: \(tbt.supervisor_name)").font(.caption).foregroundColor(.secondary)
+                }
+                if !tbt.officer_name.isEmpty {
+                    Text("سيفتي: \(tbt.officer_name)").font(.caption).foregroundColor(.secondary)
+                }
+                if !tbt.location.isEmpty {
+                    Text(tbt.location).font(.caption2).foregroundColor(.secondary)
+                }
+            }
+            Spacer()
+            VStack(spacing: 2) {
+                Text("\(tbt.attendee_count)").font(.title3).fontWeight(.bold).foregroundColor(.blue)
+                Text("حضور").font(.caption2).foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color.white).cornerRadius(12)
+        .shadow(color: .black.opacity(0.04), radius: 4)
+        .padding(.horizontal, 4)
+    }
+}
+
+struct SiteTbtDetailView: View {
+    let tbtId: Int
+    @State private var detail: SiteTbtDetail?
+    @State private var loading = true
+
+    var body: some View {
+        Group {
+            if loading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let d = detail {
+                List {
+                    Section {
+                        HStack { Text("التاريخ"); Spacer(); Text(d.date).foregroundColor(.secondary) }
+                        HStack { Text("الموضوع"); Spacer(); Text(d.topic).foregroundColor(.secondary) }
+                        if !d.location.isEmpty {
+                            HStack { Text("الموقع"); Spacer(); Text(d.location).foregroundColor(.secondary) }
+                        }
+                        HStack { Text("السيفتي"); Spacer(); Text(d.officer_name).foregroundColor(.secondary) }
+                        HStack { Text("المشرف"); Spacer(); Text(d.supervisor_name).foregroundColor(.secondary) }
+                    }
+                    Section(header: Text("الحضور (\(d.attendees.count))")) {
+                        ForEach(d.attendees) { att in
+                            HStack {
+                                Text(att.emp_name)
+                                Spacer()
+                                Text(att.emp_number).foregroundColor(.secondary).font(.caption)
+                            }
+                        }
+                    }
+                }
+                .navigationTitle("تفاصيل TBT")
+            } else {
+                Text("لم يتم تحميل البيانات").foregroundColor(.secondary)
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        loading = true
+        detail = try? await NetworkManager.shared.getSiteTbtDetail(id: tbtId)
         loading = false
     }
 }
