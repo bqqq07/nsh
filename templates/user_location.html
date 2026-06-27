@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.loc-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.loc-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.loc-badge.pkg2{background:#dbeafe;color:#1d4ed8}
+.loc-badge.pkg3{background:#fef9c3;color:#92400e}
+.proximity-0{background:#d1fae5;border-color:#6ee7b7}
+.proximity-1{background:#fef9c3;border-color:#fcd34d}
+.proximity-2{background:#f3f4f6;border-color:#d1d5db}
+.person-tile{border-radius:10px;padding:12px;border:1px solid;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.person-info{flex:1}
+.person-name{font-weight:600;font-size:14px}
+.person-loc{font-size:12px;color:var(--muted);margin-top:2px}
+.person-role{font-size:11px;margin-top:3px}
+.prox-label{font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px}
+.prox-0{background:#d1fae5;color:#065f46}
+.prox-1{background:#fef9c3;color:#78350f}
+.prox-2{background:#f3f4f6;color:#374151}
+.sup-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.sup-tile{background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px}
+.sup-tile .sup-name{font-weight:600;font-size:14px}
+.sup-tile .sup-loc{font-size:12px;color:var(--muted);margin-top:4px}
+.sup-tile .sup-time{font-size:11px;color:var(--muted);margin-top:2px}
+.form-row{display:flex;gap:10px;flex-wrap:wrap}
+.form-row>*{flex:1;min-width:100px}
+</style>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+  <h2 style="margin:0">📍 موقعي اليوم</h2>
+  <span id="currentTime" style="font-size:13px;color:var(--muted)"></span>
+</div>
+
+<!-- Current Location Card -->
+<div class="loc-card">
+  <h3 style="margin:0 0 12px;font-size:15px">تسجيل الموقع الحالي</h3>
+  {% if my_location %}
+  <div style="margin-bottom:14px;padding:10px;background:var(--bg);border-radius:8px;display:flex;align-items:center;gap:10px">
+    <span class="loc-badge {{ 'pkg' ~ my_location.pkg }}">PKG {{ my_location.pkg }}</span>
+    <span style="font-weight:600">Unit {{ my_location.unit }}</span>
+    {% if my_location.area_text %}<span style="color:var(--muted)">— {{ my_location.area_text }}</span>{% endif %}
+    <span style="font-size:11px;color:var(--muted);margin-right:auto">
+      آخر تحديث: <span id="lastUpdate">{{ my_location.updated_at.strftime('%H:%M') if my_location.updated_at else '—' }}</span>
+    </span>
+  </div>
+  {% endif %}
+
+  <form id="locForm" onsubmit="saveLocation(event)">
+    <div class="form-row">
+      <label>Package
+        <select name="pkg" id="pkgSel" required>
+          <option value="">اختر</option>
+          <option value="2" {% if my_location and my_location.pkg==2 %}selected{% endif %}>PKG 2</option>
+          <option value="3" {% if my_location and my_location.pkg==3 %}selected{% endif %}>PKG 3</option>
+        </select>
+      </label>
+      <label>Unit
+        <input type="text" name="unit" id="unitIn" placeholder="مثال: 320" required
+               value="{{ my_location.unit if my_location else '' }}">
+      </label>
+      <label>المنطقة / الموقع التفصيلي
+        <input type="text" name="area_text" id="areaIn" placeholder="مثال: str3000 أو sub station"
+               value="{{ my_location.area_text if my_location else '' }}">
+      </label>
+    </div>
+    <button type="submit" class="btn primary" style="margin-top:10px">💾 حفظ الموقع</button>
+    <small id="locMsg" style="margin-right:10px"></small>
+  </form>
+</div>
+
+<!-- Nearest Persons -->
+{% if my_location %}
+<div class="loc-card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <h3 style="margin:0;font-size:15px">
+      {% if g.role == 'safety_officer' %}🔍 أقرب مشرف{% else %}🔍 أقرب سيفتي أوفسر{% endif %}
+    </h3>
+    <button class="btn" onclick="loadNearest()" style="font-size:12px">تحديث</button>
+  </div>
+  <div id="nearestList">
+    {% for p in nearest %}
+    <div class="person-tile proximity-{{ p.proximity }}">
+      <div class="person-info">
+        <div class="person-name">{{ p.name }}</div>
+        <div class="person-loc">
+          <span class="loc-badge {{ 'pkg' ~ p.pkg }}">PKG {{ p.pkg }}</span>
+          Unit {{ p.unit }}{% if p.area_text %} — {{ p.area_text }}{% endif %}
+        </div>
+        <div class="person-role" style="color:var(--muted)">{{ p.supervisor_code }}</div>
+      </div>
+      <div>
+        <span class="prox-label prox-{{ p.proximity }}">
+          {% if p.proximity == 0 %}نفس المنطقة{% elif p.proximity == 1 %}نفس الـ PKG{% else %}PKG مختلف{% endif %}
+        </span>
+      </div>
+    </div>
+    {% else %}
+    <p class="muted" id="noNearestMsg">لا يوجد أحد سجّل موقعه بعد</p>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Site Supervisor: All Supervisors Locations -->
+{% if g.role in ('site_supervisor', 'admin', 'super_admin') %}
+<div class="loc-card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <h3 style="margin:0;font-size:15px">🗂️ مواقع المشرفين</h3>
+    <button class="btn" onclick="loadSupervisors()">تحديث</button>
+  </div>
+  <div id="supGrid" class="sup-grid">
+    {% for s in supervisors %}
+    <div class="sup-tile">
+      <div class="sup-name">{{ s.name }}</div>
+      <div class="sup-loc">
+        <span class="loc-badge {{ 'pkg' ~ s.pkg }}">PKG {{ s.pkg }}</span>
+        Unit {{ s.unit }}{% if s.area_text %} — {{ s.area_text }}{% endif %}
+      </div>
+      <div class="sup-time">{{ s.supervisor_code }} · {{ s.updated_at[:16] if s.updated_at else '' }}</div>
+    </div>
+    {% else %}
+    <p class="muted">لا يوجد مشرفون سجّلوا مواقعهم</p>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<script>
+// ── Clock ──
+function tick() {
+  const now = new Date();
+  document.getElementById('currentTime').textContent =
+    now.toLocaleTimeString('ar-SA', {hour:'2-digit',minute:'2-digit'});
+}
+tick(); setInterval(tick, 30000);
+
+// ── Save Location ──
+async function saveLocation(e) {
+  e.preventDefault();
+  const msg = document.getElementById('locMsg');
+  const body = {
+    pkg: parseInt(document.getElementById('pkgSel').value),
+    unit: document.getElementById('unitIn').value.trim(),
+    area_text: document.getElementById('areaIn').value.trim()
+  };
+  msg.textContent = '...جاري الحفظ';
+  msg.style.color = 'var(--muted)';
+  try {
+    const res = await fetch('/api/location', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (res.ok) {
+      msg.textContent = '✓ تم الحفظ';
+      msg.style.color = 'var(--success)';
+      setTimeout(() => location.reload(), 800);
+    } else {
+      msg.textContent = '✗ خطأ في الحفظ';
+      msg.style.color = 'var(--danger)';
+    }
+  } catch {
+    msg.textContent = '✗ لا يوجد اتصال';
+    msg.style.color = 'var(--danger)';
+  }
+}
+
+// ── Load Nearest ──
+async function loadNearest() {
+  const res = await fetch('/api/location/nearest');
+  if (!res.ok) return;
+  const data = await res.json();
+  const list = document.getElementById('nearestList');
+  if (!list) return;
+  const items = data.nearest || [];
+  if (items.length === 0) {
+    list.innerHTML = '<p class="muted">لا يوجد أحد سجّل موقعه بعد</p>';
+    return;
+  }
+  list.innerHTML = items.map(p => `
+    <div class="person-tile proximity-${p.proximity}">
+      <div class="person-info">
+        <div class="person-name">${p.name}</div>
+        <div class="person-loc">
+          <span class="loc-badge pkg${p.pkg}">PKG ${p.pkg}</span>
+          Unit ${p.unit}${p.area_text ? ' — ' + p.area_text : ''}
+        </div>
+        <div class="person-role" style="color:var(--muted)">${p.supervisor_code}</div>
+      </div>
+      <div>
+        <span class="prox-label prox-${p.proximity}">
+          ${p.proximity===0?'نفس المنطقة':p.proximity===1?'نفس الـ PKG':'PKG مختلف'}
+        </span>
+      </div>
+    </div>`).join('');
+}
+
+// ── Load Supervisors ──
+async function loadSupervisors() {
+  const res = await fetch('/api/location/my-supervisors');
+  if (!res.ok) return;
+  const data = await res.json();
+  const grid = document.getElementById('supGrid');
+  if (!grid) return;
+  const sups = data.supervisors || [];
+  if (sups.length === 0) {
+    grid.innerHTML = '<p class="muted">لا يوجد مشرفون سجّلوا مواقعهم</p>';
+    return;
+  }
+  grid.innerHTML = sups.map(s => `
+    <div class="sup-tile">
+      <div class="sup-name">${s.name}</div>
+      <div class="sup-loc">
+        <span class="loc-badge pkg${s.pkg}">PKG ${s.pkg}</span>
+        Unit ${s.unit}${s.area_text ? ' — ' + s.area_text : ''}
+      </div>
+      <div class="sup-time">${s.supervisor_code} · ${s.updated_at ? s.updated_at.slice(0,16) : ''}</div>
+    </div>`).join('');
+}
+</script>
+{% endblock %}

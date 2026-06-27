@@ -900,6 +900,7 @@ struct SupervisorHomeView: View {
     @State private var pendingRequests = 0
     @State private var showMyRequests  = false
     @State private var showManagement  = false
+    @State private var showLocation    = false
 
     private var weekStart: Date { Date().previousSunday }
     private var weekEnd:   Date { Calendar.current.date(byAdding: .day, value: 4, to: weekStart) ?? weekStart }
@@ -1089,7 +1090,6 @@ struct SupervisorHomeView: View {
                         }
                     }
                 } else {
-                    // إدارة الموظفين فقط للـ supervisor العادي (بدلاً عن tab منفصل)
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button { showManagement = true } label: {
                             Image(systemName: "person.badge.gear")
@@ -1097,12 +1097,22 @@ struct SupervisorHomeView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                    HStack(spacing: 14) {
+                        Button { showLocation = true } label: {
+                            Image(systemName: "location.fill")
+                                .foregroundColor(.orange)
+                        }
+                        Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                    }
                 }
             }
             .sheet(isPresented: $showMyRequests) { MyRequestsView() }
             .sheet(isPresented: $showManagement) {
                 NavigationView { EmployeeManagementView() }
+                    .environment(\.layoutDirection, .rightToLeft)
+            }
+            .sheet(isPresented: $showLocation) {
+                UserLocationView()
                     .environment(\.layoutDirection, .rightToLeft)
             }
         }

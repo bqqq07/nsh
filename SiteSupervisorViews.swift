@@ -189,6 +189,7 @@ struct SiteDashboardView: View {
     @State private var summary: SiteReportsSummary?
     @State private var loading = true
     @State private var weekOffset = 0
+    @State private var showLocation = false
 
     var body: some View {
         ScrollView {
@@ -262,6 +263,16 @@ struct SiteDashboardView: View {
         }
         .background(Color(hex: "#F0F2FF"))
         .navigationTitle("الرئيسية")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { showLocation = true } label: {
+                    Image(systemName: "location.fill").foregroundColor(.orange)
+                }
+            }
+        }
+        .sheet(isPresented: $showLocation) {
+            UserLocationView().environment(\.layoutDirection, .rightToLeft)
+        }
         .task { await load() }
         .refreshable { await load() }
     }

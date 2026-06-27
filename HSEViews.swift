@@ -40,33 +40,41 @@ struct HSEMoreView: View {
     var body: some View {
         NavigationView {
             List {
-                NavigationLink(destination: HSEMyCaView()) {
-                    HStack {
-                        Label("إجراءاتي التصحيحية", systemImage: "list.clipboard.fill")
+                Section {
+                    NavigationLink(destination: UserLocationView()) {
+                        Label("موقعي اليوم", systemImage: "location.fill")
                             .foregroundColor(.orange)
-                        Spacer()
-                        if openCaCount > 0 {
-                            Text("\(openCaCount)")
-                                .font(.caption).fontWeight(.bold)
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.orange.opacity(0.15))
-                                .foregroundColor(.orange)
-                                .cornerRadius(10)
-                        }
                     }
                 }
-                NavigationLink(destination: HSEJsoView()) {
-                    Label("JSO Closure", systemImage: "doc.badge.plus")
-                }
-                NavigationLink(destination: HSETbtView()) {
-                    Label("TBT", systemImage: "person.2.badge.gearshape")
-                }
-                NavigationLink(destination: HSENearMissView()) {
-                    Label("Near Miss", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundColor(.red)
-                }
-                NavigationLink(destination: HSEBbsView()) {
-                    Label("BBS Daily Count", systemImage: "checkmark.circle.fill")
+                Section {
+                    NavigationLink(destination: HSEMyCaView()) {
+                        HStack {
+                            Label("إجراءاتي التصحيحية", systemImage: "list.clipboard.fill")
+                                .foregroundColor(.orange)
+                            Spacer()
+                            if openCaCount > 0 {
+                                Text("\(openCaCount)")
+                                    .font(.caption).fontWeight(.bold)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Color.orange.opacity(0.15))
+                                    .foregroundColor(.orange)
+                                    .cornerRadius(10)
+                            }
+                        }
+                    }
+                    NavigationLink(destination: HSEJsoView()) {
+                        Label("JSO Closure", systemImage: "doc.badge.plus")
+                    }
+                    NavigationLink(destination: HSETbtView()) {
+                        Label("TBT", systemImage: "person.2.badge.gearshape")
+                    }
+                    NavigationLink(destination: HSENearMissView()) {
+                        Label("Near Miss", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundColor(.red)
+                    }
+                    NavigationLink(destination: HSEBbsView()) {
+                        Label("BBS Daily Count", systemImage: "checkmark.circle.fill")
+                    }
                 }
             }
             .navigationTitle("المزيد")
@@ -1079,6 +1087,8 @@ struct HSENewTbtView: View {
     @State private var errorMsg       = ""
     @State private var selectedPhoto: PhotosPickerItem? = nil
     @State private var photoData: Data? = nil
+    @State private var isLoadingEmps  = false
+    @State private var loadEmpsMsg    = ""
 
     var body: some View {
         NavigationView {
@@ -1107,6 +1117,19 @@ struct HSENewTbtView: View {
                         HStack {
                             Image(systemName: "person.badge.shield.checkmark.fill").foregroundColor(.blue)
                             Text(supName).foregroundColor(.blue).font(.subheadline)
+                            Spacer()
+                            if isLoadingEmps {
+                                ProgressView().scaleEffect(0.8)
+                            } else {
+                                Button("تحميل موظفيه") { Task { await loadSupervisorEmployees() } }
+                                    .font(.caption)
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.mini)
+                            }
+                        }
+                        if !loadEmpsMsg.isEmpty {
+                            Text(loadEmpsMsg).font(.caption)
+                                .foregroundColor(loadEmpsMsg.contains("✓") ? .green : .secondary)
                         }
                     }
                     if !supLookupMsg.isEmpty {
@@ -1193,7 +1216,7 @@ struct HSENewTbtView: View {
     private func lookupSupervisor() async {
         let code = supCode.trimmingCharacters(in: .whitespaces)
         guard !code.isEmpty else { return }
-        isLookingSuper = true; supLookupMsg = ""; supName = ""
+        isLookingSuper = true; supLookupMsg = ""; supName = ""; loadEmpsMsg = ""
         do {
             let res = try await NetworkManager.shared.hseSupervisorLookup(code: code)
             if res.found, let name = res.name {
@@ -1205,6 +1228,26 @@ struct HSENewTbtView: View {
             }
         } catch { supLookupMsg = "خطأ في البحث" }
         isLookingSuper = false
+    }
+
+    private func loadSupervisorEmployees() async {
+        let code = supCode.trimmingCharacters(in: .whitespaces)
+        guard !code.isEmpty else { return }
+        isLoadingEmps = true; loadEmpsMsg = ""
+        do {
+            let result = try await NetworkManager.shared.hseTbtSupervisorEmployees(supervisorCode: code)
+            var added = 0
+            for emp in result.employees {
+                if !attendees.contains(where: { $0.emp_number == emp.empNumber }) {
+                    attendees.append((emp_number: emp.empNumber, emp_name: emp.name))
+                    added += 1
+                }
+            }
+            loadEmpsMsg = added > 0 ? "✓ تم تحميل \(added) موظف" : "جميعهم مضافون"
+        } catch {
+            loadEmpsMsg = "لا يوجد موظفون أو حدث خطأ"
+        }
+        isLoadingEmps = false
     }
 
     private func save() async {

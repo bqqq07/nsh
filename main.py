@@ -8166,6 +8166,19 @@ class HseSupervisorAccess(db.Model):
     granted_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
 
 
+class UserLocation(db.Model):
+    """موقع المستخدم اليومي — يُحدَّث يدوياً من التطبيق أو الموقع"""
+    __tablename__ = "user_location"
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, unique=True)
+    pkg        = db.Column(db.Integer)           # 2 أو 3
+    unit       = db.Column(db.String(20))        # مثال: "320", "500"
+    area_text  = db.Column(db.String(100))       # مثال: "str3000", "sub station"
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    company_id = db.Column(db.Integer, db.ForeignKey("company.id"), nullable=True)
+    user       = db.relationship("User", backref=db.backref("location", uselist=False))
+
+
 # ── Phase 2 Models ────────────────────────────────────────────────────
 
 class HsePtw(db.Model):
@@ -9159,6 +9172,61 @@ def hse_tbt_delete(tbt_id):
     db.session.commit()
     flash("TBT session deleted.", "success")
     return redirect(url_for("hse_tbt_list"))
+
+
+# ── User Location Web Page ─────────────────────────────────────────────
+@app.route("/location", methods=["GET"])
+@login_required
+def user_location_page():
+    u = cur_user()
+    my_loc = UserLocation.query.filter_by(user_id=u.id).first()
+    # nearest persons
+    nearest = []
+    if my_loc:
+        if u.role == "safety_officer":
+            target_roles = ["supervisor", "site_supervisor"]
+        elif u.role in ["supervisor", "site_supervisor", "admin"]:
+            target_roles = ["safety_officer"]
+        else:
+            target_roles = []
+        if target_roles:
+            cutoff = datetime.utcnow() - timedelta(hours=24)
+            candidates = (db.session.query(User, UserLocation)
+                          .join(UserLocation, User.id == UserLocation.user_id)
+                          .filter(User.role.in_(target_roles))
+                          .filter(User.company_id == u.company_id)
+                          .filter(User.is_active == True)
+                          .filter(UserLocation.updated_at >= cutoff).all())
+            for c, cloc in candidates:
+                if cloc.pkg == my_loc.pkg and cloc.unit == my_loc.unit:
+                    score = 0
+                elif cloc.pkg == my_loc.pkg:
+                    score = 1
+                else:
+                    score = 2
+                nearest.append({"user_id": c.id, "name": c.name,
+                                 "role": c.role, "supervisor_code": c.supervisor_code,
+                                 "pkg": cloc.pkg, "unit": cloc.unit,
+                                 "area_text": cloc.area_text or "",
+                                 "proximity": score})
+            nearest.sort(key=lambda x: (x["proximity"], x["name"]))
+    # supervisors list for site_supervisor / admin
+    supervisors = []
+    if u.role in ("site_supervisor", "admin", "super_admin"):
+        sups = (db.session.query(User, UserLocation)
+                .join(UserLocation, User.id == UserLocation.user_id)
+                .filter(User.role == "supervisor")
+                .filter(User.company_id == u.company_id)
+                .filter(User.is_active == True).all())
+        supervisors = [{"user_id": s.id, "name": s.name,
+                         "supervisor_code": s.supervisor_code,
+                         "pkg": loc.pkg, "unit": loc.unit,
+                         "area_text": loc.area_text or "",
+                         "updated_at": loc.updated_at.isoformat() if loc.updated_at else ""}
+                        for s, loc in sups]
+        supervisors.sort(key=lambda x: (x["pkg"] or 0, x["unit"] or ""))
+    return render_template("user_location.html",
+                           my_location=my_loc, nearest=nearest, supervisors=supervisors)
 
 
 @app.route("/hse/nearmiss/<int:nm_id>/edit", methods=["GET", "POST"])
@@ -10699,6 +10767,122 @@ def api_hse_tbt_delete_api(tbt_id):
     db.session.delete(t)
     db.session.commit()
     return jsonify({"ok": True})
+
+# ── Supervisor Employees for TBT ───────────────────────
+@app.route("/api/hse/tbt/supervisor-employees", methods=["GET"])
+@api_hse_officer_required
+def api_tbt_supervisor_employees():
+    sup_code = freq.args.get("supervisor_code", "").strip()
+    if not sup_code:
+        return jsonify({"error": "missing supervisor_code"}), 400
+    sup = User.query.filter_by(supervisor_code=sup_code, is_active=True).first()
+    if not sup:
+        return jsonify({"error": "not_found"}), 404
+    emps = Employee.query.filter_by(user_id=sup.id, is_active=True).filter(
+        Employee.status != "resigned").all()
+    return jsonify({"supervisor": {"id": sup.id, "name": sup.name},
+                    "employees": [{"emp_number": e.emp_number, "name": e.name,
+                                   "department": e.department} for e in emps]})
+
+
+# ── User Location ───────────────────────────────────────
+@app.route("/api/location", methods=["POST"])
+def api_location_save():
+    u = get_api_user()
+    if not u: return jsonify(error="Unauthorized"), 401
+    body = freq.get_json() or {}
+    pkg = body.get("pkg")
+    unit = str(body.get("unit", "")).strip()
+    area_text = str(body.get("area_text", "")).strip()
+    if not pkg or not unit:
+        return jsonify(error="pkg and unit required"), 400
+    loc = UserLocation.query.filter_by(user_id=u.id).first()
+    if not loc:
+        loc = UserLocation(user_id=u.id, company_id=u.company_id)
+        db.session.add(loc)
+    loc.pkg = int(pkg)
+    loc.unit = unit
+    loc.area_text = area_text
+    loc.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@app.route("/api/location/me", methods=["GET"])
+def api_location_me():
+    u = get_api_user()
+    if not u: return jsonify(error="Unauthorized"), 401
+    loc = UserLocation.query.filter_by(user_id=u.id).first()
+    if not loc:
+        return jsonify(location=None)
+    return jsonify(location={
+        "pkg": loc.pkg, "unit": loc.unit,
+        "area_text": loc.area_text,
+        "updated_at": loc.updated_at.isoformat() if loc.updated_at else None
+    })
+
+
+@app.route("/api/location/nearest", methods=["GET"])
+def api_location_nearest():
+    u = get_api_user()
+    if not u: return jsonify(error="Unauthorized"), 401
+    my_loc = UserLocation.query.filter_by(user_id=u.id).first()
+    if not my_loc:
+        return jsonify(error="no_location"), 400
+    # السيفتي يرى المشرفين — المشرف يرى السيفتي
+    if u.role == "safety_officer":
+        target_roles = ["supervisor", "site_supervisor"]
+    elif u.role in ["supervisor", "site_supervisor", "admin"]:
+        target_roles = ["safety_officer"]
+    else:
+        return jsonify(nearest=[])
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    candidates = (db.session.query(User, UserLocation)
+                  .join(UserLocation, User.id == UserLocation.user_id)
+                  .filter(User.role.in_(target_roles))
+                  .filter(User.company_id == u.company_id)
+                  .filter(User.is_active == True)
+                  .filter(UserLocation.updated_at >= cutoff)
+                  .all())
+    results = []
+    for c, cloc in candidates:
+        if cloc.pkg == my_loc.pkg and cloc.unit == my_loc.unit:
+            score = 0
+        elif cloc.pkg == my_loc.pkg:
+            score = 1
+        else:
+            score = 2
+        results.append({
+            "user_id": c.id, "name": c.name, "role": c.role,
+            "supervisor_code": c.supervisor_code,
+            "pkg": cloc.pkg, "unit": cloc.unit, "area_text": cloc.area_text,
+            "updated_at": cloc.updated_at.isoformat(),
+            "proximity": score
+        })
+    results.sort(key=lambda x: (x["proximity"], x["name"]))
+    return jsonify(nearest=results[:10])
+
+
+@app.route("/api/location/my-supervisors", methods=["GET"])
+def api_location_my_supervisors():
+    u = get_api_user()
+    if not u: return jsonify(error="Unauthorized"), 401
+    if u.role not in ["site_supervisor", "admin", "super_admin"]:
+        return jsonify(error="forbidden"), 403
+    sups = (db.session.query(User, UserLocation)
+            .join(UserLocation, User.id == UserLocation.user_id)
+            .filter(User.role == "supervisor")
+            .filter(User.company_id == u.company_id)
+            .filter(User.is_active == True)
+            .all())
+    result = [{"user_id": s.id, "name": s.name,
+               "supervisor_code": s.supervisor_code,
+               "pkg": loc.pkg, "unit": loc.unit, "area_text": loc.area_text,
+               "updated_at": loc.updated_at.isoformat() if loc.updated_at else None}
+              for s, loc in sups]
+    result.sort(key=lambda x: (x["pkg"] or 0, x["unit"] or ""))
+    return jsonify(supervisors=result)
+
 
 # ── Near Miss ──────────────────────────────────────────
 @app.route("/api/hse/nearmiss", methods=["GET"])
