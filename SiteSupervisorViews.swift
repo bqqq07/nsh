@@ -344,7 +344,7 @@ struct SiteDashboardView: View {
             }
         }
         .sheet(isPresented: $showLocation) {
-            UserLocationView().environment(\.layoutDirection, .rightToLeft)
+            NavigationView { UserLocationView() }.environment(\.layoutDirection, .rightToLeft)
         }
         .task { await load() }
         .refreshable { await load() }

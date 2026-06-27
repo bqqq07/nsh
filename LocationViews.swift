@@ -23,12 +23,10 @@ struct UserLocationView: View {
     @State private var isLoading = false
 
     var body: some View {
-        NavigationView {
-            if isAdmin {
-                adminView
-            } else {
-                fieldView
-            }
+        if isAdmin {
+            adminView
+        } else {
+            fieldView
         }
     }
 

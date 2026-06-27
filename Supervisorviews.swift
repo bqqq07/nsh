@@ -1114,7 +1114,7 @@ struct SupervisorHomeView: View {
                     .environment(\.layoutDirection, .rightToLeft)
             }
             .sheet(isPresented: $showLocation) {
-                UserLocationView()
+                NavigationView { UserLocationView() }
                     .environment(\.layoutDirection, .rightToLeft)
             }
         }
