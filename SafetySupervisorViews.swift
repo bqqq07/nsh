@@ -20,6 +20,9 @@ struct SafetySupervisorTabView: View {
 
             NavigationView { UserLocationView() }
                 .tabItem { Label("Location", systemImage: "location.fill") }
+
+            ProfileView()
+                .tabItem { Label("Profile", systemImage: "person.circle") }
         }
         .accentColor(Color(hex: "#16a34a"))
         .task { await loadBadge() }
@@ -52,10 +55,14 @@ struct SafetySupMonitorView: View {
                 NavigationLink(destination: HSETbtView()) {
                     Label("TBT", systemImage: "person.2.badge.gearshape")
                 }
+                NavigationLink(destination: HSENearMissView()) {
+                    Label("Near Miss", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                }
             }
-            Section {
-                NavigationLink(destination: ProfileView()) {
-                    Label("Profile", systemImage: "person.circle")
+            Section(header: Text("Reports")) {
+                NavigationLink(destination: SafetySupWeeklyReportView()) {
+                    Label("Weekly Report", systemImage: "doc.text.fill")
                 }
             }
         }
@@ -146,11 +153,15 @@ struct SafetySupCheckinView: View {
 //  MARK: - Home: Officers Overview
 // ═══════════════════════════════════════════════════
 struct SafetySupervisorHomeView: View {
-    @State private var officers: [SafetyOfficerStat] = []
-    @State private var isLoading = true
-    @State private var errorMsg = ""
+    @State private var officers:     [SafetyOfficerStat] = []
+    @State private var highRisk:     [HseHighRiskItem]   = []
+    @State private var isLoading     = true
+    @State private var errorMsg      = ""
 
-    private var checkedIn: Int { officers.filter { $0.checkedIn }.count }
+    private var checkedIn: Int  { officers.filter { $0.checkedIn }.count }
+    private var totalObs: Int   { officers.reduce(0) { $0 + $1.obsWeek } }
+    private var totalTbt: Int   { officers.reduce(0) { $0 + $1.tbtWeek } }
+    private var totalNm: Int    { officers.reduce(0) { $0 + $1.nmWeek } }
 
     var body: some View {
         NavigationView {
@@ -169,19 +180,51 @@ struct SafetySupervisorHomeView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List {
-                        // Summary header
+                        // Summary KPI cards
                         Section {
-                            HStack(spacing: 16) {
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                                 statCard(title: "Checked In", value: "\(checkedIn)/\(officers.count)",
                                          color: checkedIn == officers.count ? .green : .orange,
                                          icon: "checkmark.seal.fill")
                                 statCard(title: "Officers", value: "\(officers.count)",
                                          color: .blue, icon: "person.3.fill")
+                                statCard(title: "Obs (week)", value: "\(totalObs)",
+                                         color: .blue, icon: "eye.fill")
+                                statCard(title: "TBT (week)", value: "\(totalTbt)",
+                                         color: .purple, icon: "person.2.badge.gearshape")
+                                statCard(title: "Near Miss", value: "\(totalNm)",
+                                         color: totalNm > 0 ? .red : .secondary, icon: "exclamationmark.triangle.fill")
                             }
                             .padding(.vertical, 4)
                         }
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets())
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+
+                        // High-risk open observations alert panel
+                        if !highRisk.isEmpty {
+                            Section(header: Label("High Risk Open (\(highRisk.count))",
+                                                  systemImage: "exclamationmark.shield.fill")
+                                .foregroundColor(.red)) {
+                                ForEach(highRisk) { item in
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        HStack {
+                                            Text(item.officer).font(.subheadline).fontWeight(.semibold)
+                                            Spacer()
+                                            Text(item.date).font(.caption2).foregroundColor(.secondary)
+                                        }
+                                        if !item.category.isEmpty {
+                                            Text(item.category).font(.caption).foregroundColor(.orange)
+                                        }
+                                        if !item.description.isEmpty {
+                                            Text(item.description)
+                                                .font(.caption).foregroundColor(.secondary)
+                                                .lineLimit(2)
+                                        }
+                                    }
+                                    .padding(.vertical, 3)
+                                }
+                            }
+                        }
 
                         // Officers list
                         Section(header: Text("Today's Status")) {
@@ -208,7 +251,10 @@ struct SafetySupervisorHomeView: View {
         isLoading = true
         errorMsg = ""
         do {
-            officers = try await NetworkManager.shared.getSafetyOfficers()
+            async let officersTask = NetworkManager.shared.getSafetyOfficers()
+            async let dashTask     = NetworkManager.shared.getHseDashboard()
+            officers  = try await officersTask
+            highRisk  = (try? await dashTask)?.high_risk_open ?? []
         } catch {
             errorMsg = error.localizedDescription
         }
@@ -261,11 +307,26 @@ struct OfficerStatRow: View {
                     .foregroundColor(.secondary)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 pill("Obs", officer.obsWeek, color: .blue)
                 pill("TBT", officer.tbtWeek, color: .purple)
                 pill("NM", officer.nmWeek, color: .red)
-                pill("Total", officer.totalWeek, color: officer.totalWeek > 0 ? .green : .gray)
+                pill("JSO", officer.jsoWeek, color: .teal)
+                pill("Insp", officer.inspWeek, color: .indigo)
+            }
+            HStack(spacing: 6) {
+                pill("BBS", officer.bbsWeek, color: .orange)
+                pill("PTW", officer.ptwWeek, color: .mint)
+                Spacer()
+                HStack(spacing: 3) {
+                    Image(systemName: "star.fill").font(.caption2).foregroundColor(.yellow)
+                    Text(String(format: "%.1f", officer.score))
+                        .font(.caption).fontWeight(.bold)
+                        .foregroundColor(officer.score > 0 ? .green : .secondary)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Color.green.opacity(0.1))
+                .cornerRadius(6)
             }
         }
         .padding(.vertical, 4)
@@ -289,5 +350,118 @@ struct OfficerStatRow: View {
         .padding(.horizontal, 7).padding(.vertical, 3)
         .background(color.opacity(0.08))
         .cornerRadius(6)
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  MARK: - Weekly Report View
+// ═══════════════════════════════════════════════════
+struct SafetySupWeeklyReportView: View {
+    @State private var report:    HseWeeklyReportResponse? = nil
+    @State private var isLoading  = true
+    @State private var errorMsg   = ""
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView("Loading report…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !errorMsg.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundColor(.orange)
+                    Text(errorMsg).font(.caption).foregroundColor(.secondary)
+                    Button("Retry") { Task { await load() } }.buttonStyle(.bordered)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let rep = report {
+                List {
+                    Section(header: Text("Week: \(rep.week_start) → \(rep.week_end)")) {
+                        EmptyView()
+                    }
+                    if rep.rows.isEmpty {
+                        Section { Text("No data for this week.").foregroundColor(.secondary) }
+                    } else {
+                        let prevMap = Dictionary(uniqueKeysWithValues: rep.prev_rows.map { ($0.officer_id, $0) })
+                        ForEach(rep.rows.sorted { $0.score > $1.score }) { row in
+                            let prev = prevMap[row.officer_id]
+                            weeklyRow(row, prev: prev)
+                        }
+                    }
+                }
+                .refreshable { await load() }
+            }
+        }
+        .navigationTitle("Weekly Report")
+        .task { await load() }
+    }
+
+    @ViewBuilder
+    private func weeklyRow(_ row: HseWeeklyRow, prev: HseWeeklyRow?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(row.officer_name).font(.headline)
+                Spacer()
+                // Score with trend arrow
+                HStack(spacing: 4) {
+                    if let p = prev {
+                        Image(systemName: row.score >= p.score ? "arrow.up.right" : "arrow.down.right")
+                            .font(.caption2)
+                            .foregroundColor(row.score >= p.score ? .green : .red)
+                    }
+                    Text(String(format: "%.1f", row.score))
+                        .font(.subheadline).fontWeight(.bold)
+                        .foregroundColor(scoreColor(row.score))
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(scoreColor(row.score).opacity(0.1))
+                .cornerRadius(6)
+            }
+
+            // Attendance
+            HStack(spacing: 4) {
+                Image(systemName: "calendar.badge.checkmark").font(.caption2).foregroundColor(.teal)
+                Text("Check-in: \(row.checkin_days)/5 days").font(.caption).foregroundColor(.secondary)
+            }
+
+            // Activity metrics row 1
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    weekPill("Obs",  row.obs_total,   prev?.obs_total,   color: .blue)
+                    weekPill("TBT",  row.tbt,         prev?.tbt,         color: .purple)
+                    weekPill("NM",   row.nm,          prev?.nm,          color: .red)
+                    weekPill("JSO",  row.jso,         prev?.jso,         color: .teal)
+                    weekPill("BBS",  row.bbs,         prev?.bbs,         color: .orange)
+                    weekPill("PTW",  row.ptw,         prev?.ptw,         color: .mint)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func weekPill(_ label: String, _ val: Int, _ prev: Int?, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Text(label).font(.caption2).foregroundColor(.secondary)
+            Text("\(val)").font(.caption).fontWeight(.semibold).foregroundColor(color)
+            if let p = prev, val != p {
+                Image(systemName: val > p ? "arrow.up" : "arrow.down")
+                    .font(.system(size: 7))
+                    .foregroundColor(val > p ? .green : .red)
+            }
+        }
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(color.opacity(0.08))
+        .cornerRadius(6)
+    }
+
+    private func scoreColor(_ s: Double) -> Color {
+        s >= 20 ? .green : s >= 10 ? .orange : .red
+    }
+
+    private func load() async {
+        isLoading = true; errorMsg = ""
+        do { report = try await NetworkManager.shared.getHseWeeklyReport() }
+        catch { errorMsg = error.localizedDescription }
+        isLoading = false
     }
 }

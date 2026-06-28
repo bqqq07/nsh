@@ -668,6 +668,49 @@ struct HseObservationsResponse: Codable {
     let total: Int
 }
 
+struct HseHighRiskItem: Codable, Identifiable {
+    let id:          Int
+    let date:        String
+    let officer:     String
+    let category:    String
+    let location:    String
+    let description: String
+}
+
+struct HseDashboardResponse: Codable {
+    let today:           String
+    let week_start:      String
+    let high_risk_open:  [HseHighRiskItem]
+}
+
+struct HseWeeklyRow: Codable, Identifiable {
+    let officer_id:       Int
+    let officer_name:     String
+    let checkin_days:     Int
+    let obs_total:        Int
+    let obs_unsafe_act:   Int
+    let obs_unsafe_cond:  Int
+    let obs_positive:     Int
+    let obs_high:         Int
+    let obs_open:         Int
+    let jso:              Int
+    let tbt:              Int
+    let tbt_attendees:    Int
+    let nm:               Int
+    let bbs:              Int
+    let ptw:              Int
+    let avg_insp:         Double?
+    let score:            Double
+    var id: Int { officer_id }
+}
+
+struct HseWeeklyReportResponse: Codable {
+    let week_start: String
+    let week_end:   String
+    let rows:       [HseWeeklyRow]
+    let prev_rows:  [HseWeeklyRow]
+}
+
 struct HseJsoItem: Codable, Identifiable {
     let id:           Int
     let date:         String
@@ -953,7 +996,12 @@ struct SafetyOfficerStat: Identifiable {
     let obsWeek: Int
     let tbtWeek: Int
     let nmWeek: Int
+    let jsoWeek: Int
+    let bbsWeek: Int
+    let ptwWeek: Int
+    let inspWeek: Int
     let totalWeek: Int
+    let score: Double
     let locationPkg: Int?
     let locationUnit: String?
 }
@@ -1035,6 +1083,18 @@ extension NetworkManager {
     }
 
     // Observations
+    func getHseDashboard() async throws -> HseDashboardResponse {
+        let (data, _) = try await session.data(for: makeRequest("/api/hse/dashboard"))
+        return try JSONDecoder().decode(HseDashboardResponse.self, from: data)
+    }
+
+    func getHseWeeklyReport(weekStart: String? = nil) async throws -> HseWeeklyReportResponse {
+        var path = "/api/hse/reports/weekly"
+        if let ws = weekStart { path += "?week_start=\(ws)" }
+        let (data, _) = try await session.data(for: makeRequest(path))
+        return try JSONDecoder().decode(HseWeeklyReportResponse.self, from: data)
+    }
+
     func hseObservations(page: Int = 1, status: String = "") async throws -> HseObservationsResponse {
         var path = "/api/hse/observations?page=\(page)"
         if !status.isEmpty { path += "&status=\(status)" }
@@ -1628,7 +1688,12 @@ extension NetworkManager {
                 obsWeek: d["obs_week"] as? Int ?? 0,
                 tbtWeek: d["tbt_week"] as? Int ?? 0,
                 nmWeek: d["nm_week"] as? Int ?? 0,
+                jsoWeek: d["jso_week"] as? Int ?? 0,
+                bbsWeek: d["bbs_week"] as? Int ?? 0,
+                ptwWeek: d["ptw_week"] as? Int ?? 0,
+                inspWeek: d["insp_week"] as? Int ?? 0,
                 totalWeek: d["total_week"] as? Int ?? 0,
+                score: d["score"] as? Double ?? 0,
                 locationPkg: d["location_pkg"] as? Int,
                 locationUnit: d["location_unit"] as? String
             )
