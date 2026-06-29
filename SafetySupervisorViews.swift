@@ -59,6 +59,26 @@ struct SafetySupMonitorView: View {
                     Label("Near Miss", systemImage: "exclamationmark.triangle.fill")
                         .foregroundColor(.red)
                 }
+                NavigationLink(destination: SafetySupJsoView()) {
+                    Label("JSO Closures", systemImage: "doc.badge.plus")
+                        .foregroundColor(.teal)
+                }
+                NavigationLink(destination: SafetySupBbsView()) {
+                    Label("BBS Cards", systemImage: "checkmark.seal.fill")
+                        .foregroundColor(.orange)
+                }
+                NavigationLink(destination: SafetySupPtwView()) {
+                    Label("PTW", systemImage: "key.fill")
+                        .foregroundColor(.mint)
+                }
+                NavigationLink(destination: SafetySupManpowerView()) {
+                    Label("Manpower", systemImage: "person.3.sequence.fill")
+                        .foregroundColor(.blue)
+                }
+                NavigationLink(destination: SafetySupInspectionView()) {
+                    Label("Inspections", systemImage: "checklist")
+                        .foregroundColor(.indigo)
+                }
             }
             Section(header: Text("Reports")) {
                 NavigationLink(destination: SafetySupWeeklyReportView()) {
@@ -644,6 +664,332 @@ struct OfficerDetailView: View {
         isLoading = true; errorMsg = ""
         do { detail = try await NetworkManager.shared.hseOfficerDetail(officerId: officerId, days: days) }
         catch { errorMsg = error.localizedDescription }
+        isLoading = false
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  MARK: - Supervisor JSO List
+// ═══════════════════════════════════════════════════
+struct SafetySupJsoView: View {
+    @State private var items: [HseJsoItem] = []
+    @State private var page  = 1
+    @State private var pages = 1
+    @State private var isLoading = true
+
+    var body: some View {
+        List {
+            if isLoading && items.isEmpty {
+                Section { ProgressView() }
+            } else if items.isEmpty {
+                Section { Text("No JSO records.").foregroundColor(.secondary) }
+            } else {
+                ForEach(items) { j in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text("JSO #\(j.jso_number)").font(.headline)
+                            Spacer()
+                            Text(j.date).font(.caption2).foregroundColor(.secondary)
+                        }
+                        if let off = j.officer_name, !off.isEmpty {
+                            Text(off).font(.caption).foregroundColor(.teal)
+                        }
+                        if !j.location.isEmpty {
+                            Text("📍 \(j.location)").font(.caption).foregroundColor(.secondary)
+                        }
+                        if !j.action_taken.isEmpty {
+                            Text(j.action_taken).font(.caption).foregroundColor(.secondary).lineLimit(2)
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+                if page < pages {
+                    Button("Load more") { Task { await loadMore() } }
+                        .font(.caption).frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .navigationTitle("JSO Closures")
+        .refreshable { await reset() }
+        .task { await reset() }
+    }
+
+    private func reset() async {
+        page = 1; items = []
+        await load()
+    }
+    private func loadMore() async {
+        page += 1; await load()
+    }
+    private func load() async {
+        isLoading = true
+        if let resp = try? await NetworkManager.shared.hseJsoList(page: page) {
+            items += resp.items; pages = resp.pages
+        }
+        isLoading = false
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  MARK: - Supervisor BBS List
+// ═══════════════════════════════════════════════════
+struct SafetySupBbsView: View {
+    @State private var items: [HseBbsItem] = []
+    @State private var isLoading = true
+
+    private var total: Int { items.reduce(0) { $0 + $1.card_count } }
+
+    var body: some View {
+        List {
+            if isLoading {
+                Section { ProgressView() }
+            } else {
+                Section(header: Text("Total cards: \(total)")) {
+                    EmptyView()
+                }
+                .listRowBackground(Color.clear)
+
+                if items.isEmpty {
+                    Section { Text("No BBS records.").foregroundColor(.secondary) }
+                } else {
+                    ForEach(items) { b in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                if let off = b.officer_name, !off.isEmpty {
+                                    Text(off).font(.subheadline).fontWeight(.medium)
+                                }
+                                Text(b.date).font(.caption).foregroundColor(.secondary)
+                                if !b.notes.isEmpty {
+                                    Text(b.notes).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                }
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing) {
+                                Text("\(b.card_count)").font(.title3).fontWeight(.bold).foregroundColor(.orange)
+                                Text("cards").font(.caption2).foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
+            }
+        }
+        .navigationTitle("BBS Cards")
+        .refreshable { await load() }
+        .task { await load() }
+    }
+
+    private func load() async {
+        isLoading = true
+        items = (try? await NetworkManager.shared.hseBbsList()) ?? []
+        isLoading = false
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  MARK: - Supervisor PTW List
+// ═══════════════════════════════════════════════════
+struct SafetySupPtwView: View {
+    @State private var items: [HsePtwItem] = []
+    @State private var isLoading = true
+
+    private var active: [HsePtwItem] { items.filter { !$0.expired } }
+    private var expired: [HsePtwItem] { items.filter { $0.expired } }
+
+    var body: some View {
+        List {
+            if isLoading {
+                Section { ProgressView() }
+            } else if items.isEmpty {
+                Section { Text("No PTW records.").foregroundColor(.secondary) }
+            } else {
+                if !active.isEmpty {
+                    Section(header: Text("Active (\(active.count))")) {
+                        ForEach(active) { ptwRow($0) }
+                    }
+                }
+                if !expired.isEmpty {
+                    Section(header: Text("Expired (\(expired.count))")) {
+                        ForEach(expired) { ptwRow($0) }
+                    }
+                }
+            }
+        }
+        .navigationTitle("PTW")
+        .refreshable { await load() }
+        .task { await load() }
+    }
+
+    @ViewBuilder
+    private func ptwRow(_ p: HsePtwItem) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(p.permit_number).font(.headline)
+                Spacer()
+                Text(p.status.uppercased())
+                    .font(.caption2).fontWeight(.bold)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(p.status == "active" ? Color.green.opacity(0.15) : Color.gray.opacity(0.1))
+                    .foregroundColor(p.status == "active" ? .green : .secondary)
+                    .cornerRadius(5)
+            }
+            if let off = p.officer_name, !off.isEmpty {
+                Text(off).font(.caption).foregroundColor(.mint)
+            }
+            HStack(spacing: 8) {
+                Text(p.permit_type).font(.caption).foregroundColor(.secondary)
+                Text("\(p.week_start) → \(p.week_end)").font(.caption2).foregroundColor(.secondary)
+            }
+            if !p.location.isEmpty {
+                Text("📍 \(p.location)").font(.caption).foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private func load() async {
+        isLoading = true
+        items = (try? await NetworkManager.shared.hsePtwList()) ?? []
+        isLoading = false
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  MARK: - Supervisor Manpower List
+// ═══════════════════════════════════════════════════
+struct SafetySupManpowerView: View {
+    @State private var items: [HseManpowerItem] = []
+    @State private var isLoading = true
+
+    private var totalToday: Int {
+        let today = Date().iso
+        return items.filter { $0.date == today }.reduce(0) { $0 + $1.total_count }
+    }
+
+    var body: some View {
+        List {
+            if isLoading {
+                Section { ProgressView() }
+            } else {
+                if totalToday > 0 {
+                    Section(header: Text("Today: \(totalToday) workers")) {
+                        EmptyView()
+                    }
+                    .listRowBackground(Color.clear)
+                }
+                if items.isEmpty {
+                    Section { Text("No manpower records.").foregroundColor(.secondary) }
+                } else {
+                    ForEach(items) { m in
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    if let off = m.officer_name, !off.isEmpty {
+                                        Text(off).font(.subheadline).fontWeight(.medium)
+                                    }
+                                    Text(m.date).font(.caption).foregroundColor(.secondary)
+                                    if !m.location.isEmpty {
+                                        Text("📍 \(m.location)").font(.caption).foregroundColor(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing) {
+                                    Text("\(m.total_count)").font(.title3).fontWeight(.bold).foregroundColor(.blue)
+                                    Text("workers").font(.caption2).foregroundColor(.secondary)
+                                }
+                            }
+                            if let bd = m.breakdown, !bd.isEmpty {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 6) {
+                                        ForEach(bd.sorted { $0.key < $1.key }, id: \.key) { k, v in
+                                            Text("\(k): \(v)")
+                                                .font(.caption2)
+                                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                                .background(Color.blue.opacity(0.08))
+                                                .cornerRadius(4)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Manpower")
+        .refreshable { await load() }
+        .task { await load() }
+    }
+
+    private func load() async {
+        isLoading = true
+        items = (try? await NetworkManager.shared.hseManpowerHistory()) ?? []
+        isLoading = false
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  MARK: - Supervisor Inspection List
+// ═══════════════════════════════════════════════════
+struct SafetySupInspectionView: View {
+    @State private var items: [HseInspectionHistoryItem] = []
+    @State private var isLoading = true
+
+    private var avgScore: Double {
+        let scored = items.compactMap { $0.overall_score }
+        guard !scored.isEmpty else { return 0 }
+        return scored.reduce(0, +) / Double(scored.count)
+    }
+
+    var body: some View {
+        List {
+            if isLoading {
+                Section { ProgressView() }
+            } else {
+                if !items.isEmpty {
+                    Section(header: Text(String(format: "Avg score: %.1f%%", avgScore))) {
+                        EmptyView()
+                    }
+                    .listRowBackground(Color.clear)
+                }
+                if items.isEmpty {
+                    Section { Text("No inspection records.").foregroundColor(.secondary) }
+                } else {
+                    ForEach(items) { r in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                if let off = r.officer_name, !off.isEmpty {
+                                    Text(off).font(.subheadline).fontWeight(.medium)
+                                }
+                                Text(r.date).font(.caption).foregroundColor(.secondary)
+                                if !r.location.isEmpty {
+                                    Text("📍 \(r.location)").font(.caption).foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                            if let score = r.overall_score {
+                                VStack(alignment: .trailing) {
+                                    Text(String(format: "%.0f%%", score))
+                                        .font(.title3).fontWeight(.bold)
+                                        .foregroundColor(score >= 80 ? .green : score >= 60 ? .orange : .red)
+                                    Text("score").font(.caption2).foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Inspections")
+        .refreshable { await load() }
+        .task { await load() }
+    }
+
+    private func load() async {
+        isLoading = true
+        items = (try? await NetworkManager.shared.hseInspectionHistory()) ?? []
         isLoading = false
     }
 }

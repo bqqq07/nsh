@@ -684,6 +684,7 @@ struct HseJsoItem: Codable, Identifiable {
     let location:     String
     let action_taken: String
     let photo_path:   String?
+    let officer_name: String?
 }
 
 struct HseJsoResponse: Codable {
@@ -746,10 +747,11 @@ struct HseNearMissResponse: Codable {
 }
 
 struct HseBbsItem: Codable, Identifiable {
-    let id:         Int
-    let date:       String
-    let card_count: Int
-    let notes:      String
+    let id:           Int
+    let date:         String
+    let card_count:   Int
+    let notes:        String
+    let officer_name: String?
 }
 
 struct HsePtwItem: Codable, Identifiable {
@@ -763,15 +765,17 @@ struct HsePtwItem: Codable, Identifiable {
     let status:         String
     let attached_to_id: Int?
     let expired:        Bool
+    let officer_name:   String?
 }
 
 struct HseManpowerItem: Codable, Identifiable {
-    let id:          Int
-    let date:        String
-    let location:    String
-    let total_count: Int
-    let breakdown:   [String: Int]?
-    let notes:       String
+    let id:           Int
+    let date:         String
+    let location:     String
+    let total_count:  Int
+    let breakdown:    [String: Int]?
+    let notes:        String
+    let officer_name: String?
 }
 
 struct HseChecklistEntry: Codable {
@@ -795,6 +799,7 @@ struct HseInspectionHistoryItem: Codable, Identifiable {
     let location:      String
     let overall_score: Double?
     let notes:         String
+    let officer_name:  String?
 }
 
 struct HseCaItem: Codable, Identifiable {
