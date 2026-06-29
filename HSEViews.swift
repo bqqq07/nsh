@@ -5,6 +5,8 @@ import PhotosUI
 //  MARK: - HSE Officer Tab (safety_officer role)
 // ═══════════════════════════════════════════════════
 struct HSEOfficerTabView: View {
+    @State private var openCaCount = 0
+
     var body: some View {
         TabView {
             HSEOfficerHomeView()
@@ -18,11 +20,21 @@ struct HSEOfficerTabView: View {
 
             HSEMyCaView()
                 .tabItem { Label("My CAs", systemImage: "checkmark.circle.fill") }
+                .badge(openCaCount)
 
             ProfileView()
                 .tabItem { Label("Profile", systemImage: "person.circle") }
         }
         .accentColor(Color(hex: "#16a34a"))
+        .task { await loadCaBadge() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            Task { await loadCaBadge() }
+        }
+    }
+
+    private func loadCaBadge() async {
+        let items = (try? await NetworkManager.shared.hseMyCa()) ?? []
+        openCaCount = items.filter { $0.status != "completed" }.count
     }
 }
 
