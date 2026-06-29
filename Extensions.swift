@@ -66,3 +66,13 @@ extension Date {
         return _gregorianCal.date(byAdding: .day, value: diff, to: self) ?? self
     }
 }
+
+// ═══════════════════════════════════════════════════
+//  MARK: - Conditional View Modifier
+// ═══════════════════════════════════════════════════
+extension View {
+    @ViewBuilder
+    func `if`<T: View>(_ condition: Bool, transform: (Self) -> T) -> some View {
+        if condition { transform(self) } else { self }
+    }
+}

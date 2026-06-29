@@ -335,6 +335,8 @@ struct HSECheckinView: View {
 //  MARK: - 2. Observations View
 // ═══════════════════════════════════════════════════
 struct HSEObservationsView: View {
+    var allowEditing: Bool = true   // false for supervisor read-only mode
+
     @State private var items:    [HseObservationItem] = []
     @State private var page      = 1
     @State private var pages     = 1
@@ -364,15 +366,18 @@ struct HSEObservationsView: View {
                             NavigationLink(destination: HSEObservationDetailView(obs: obs, onUpdate: { Task { await load() } })) {
                                 ObsRow(obs: obs)
                             }
-                            .swipeActions(edge: .leading) {
-                                Button { editObs = obs; showEdit = true } label: {
-                                    Label("تعديل", systemImage: "pencil")
-                                }.tint(.blue)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) { Task { await delete(id: obs.id) } } label: {
-                                    Label("حذف", systemImage: "trash")
-                                }
+                            .if(allowEditing) { row in
+                                row
+                                    .swipeActions(edge: .leading) {
+                                        Button { editObs = obs; showEdit = true } label: {
+                                            Label("تعديل", systemImage: "pencil")
+                                        }.tint(.blue)
+                                    }
+                                    .swipeActions(edge: .trailing) {
+                                        Button(role: .destructive) { Task { await delete(id: obs.id) } } label: {
+                                            Label("حذف", systemImage: "trash")
+                                        }
+                                    }
                             }
                         }
 
@@ -388,8 +393,10 @@ struct HSEObservationsView: View {
             }
             .navigationTitle("الملاحظات")
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button { showNew = true } label: { Image(systemName: "plus") }
+                if allowEditing {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button { showNew = true } label: { Image(systemName: "plus") }
+                    }
                 }
             }
             .sheet(isPresented: $showNew) {

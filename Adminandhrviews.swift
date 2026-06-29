@@ -2025,3 +2025,105 @@ struct AdminAddUserView: View {
         saving = false
     }
 }
+
+// ═══════════════════════════════════════════════════
+//  MARK: - Admin HSE Access Management
+// ═══════════════════════════════════════════════════
+struct AdminHseAccessView: View {
+    @State private var entries:   [HseAccessEntry] = []
+    @State private var isLoading  = true
+    @State private var codeInput  = ""
+    @State private var errorMsg   = ""
+    @State private var successMsg = ""
+    @State private var isGranting = false
+
+    var body: some View {
+        List {
+            Section(header: Text("Grant Access")) {
+                HStack {
+                    TextField("Supervisor Code", text: $codeInput)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                    Button {
+                        Task { await grant() }
+                    } label: {
+                        if isGranting {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text("Grant")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(codeInput.trimmingCharacters(in: .whitespaces).isEmpty || isGranting)
+                }
+                if !successMsg.isEmpty {
+                    Text(successMsg).font(.caption).foregroundColor(.green)
+                }
+                if !errorMsg.isEmpty {
+                    Text(errorMsg).font(.caption).foregroundColor(.red)
+                }
+            }
+
+            Section(header: Text("Current Access (\(entries.count))")) {
+                if isLoading {
+                    ProgressView()
+                } else if entries.isEmpty {
+                    Text("No HSE supervisors assigned.")
+                        .foregroundColor(.secondary).font(.callout)
+                } else {
+                    ForEach(entries) { entry in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.name).font(.headline)
+                                Text("\(entry.code) · \(entry.role)")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "shield.fill").foregroundColor(.green)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                Task { await revoke(userId: entry.user_id) }
+                            } label: {
+                                Label("Revoke", systemImage: "shield.slash.fill")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("HSE Access")
+        .refreshable { await load() }
+        .task { await load() }
+    }
+
+    private func load() async {
+        isLoading = true
+        entries = (try? await NetworkManager.shared.adminHseAccessList()) ?? []
+        isLoading = false
+    }
+
+    private func grant() async {
+        let code = codeInput.trimmingCharacters(in: .whitespaces)
+        guard !code.isEmpty else { return }
+        isGranting = true; errorMsg = ""; successMsg = ""
+        do {
+            let name = try await NetworkManager.shared.adminHseAccessGrant(code: code)
+            successMsg = "Access granted to \(name)"
+            codeInput = ""
+            await load()
+        } catch {
+            errorMsg = error.localizedDescription
+        }
+        isGranting = false
+    }
+
+    private func revoke(userId: Int) async {
+        do {
+            try await NetworkManager.shared.adminHseAccessRevoke(userId: userId)
+            entries.removeAll { $0.user_id == userId }
+        } catch {
+            errorMsg = error.localizedDescription
+        }
+    }
+}

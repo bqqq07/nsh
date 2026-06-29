@@ -49,7 +49,7 @@ struct SafetySupMonitorView: View {
                     Label("Locations Today", systemImage: "location.fill")
                         .foregroundColor(.orange)
                 }
-                NavigationLink(destination: HSEObservationsView()) {
+                NavigationLink(destination: HSEObservationsView(allowEditing: false)) {
                     Label("Observations", systemImage: "eye.fill")
                 }
                 NavigationLink(destination: HSETbtView()) {
@@ -154,7 +154,7 @@ struct SafetySupCheckinView: View {
 // ═══════════════════════════════════════════════════
 struct SafetySupervisorHomeView: View {
     @State private var officers:     [SafetyOfficerStat] = []
-    @State private var highRisk:     [HseHighRiskItem]   = []
+    @State private var highRisk:     [HseHighRiskItem] = []
     @State private var isLoading     = true
     @State private var errorMsg      = ""
 
@@ -234,7 +234,10 @@ struct SafetySupervisorHomeView: View {
                                     .font(.callout)
                             } else {
                                 ForEach(officers) { officer in
-                                    OfficerStatRow(officer: officer)
+                                    NavigationLink(destination: OfficerDetailView(officerId: officer.id,
+                                                                                   officerName: officer.name.isEmpty ? officer.code : officer.name)) {
+                                        OfficerStatRow(officer: officer)
+                                    }
                                 }
                             }
                         }
@@ -357,7 +360,7 @@ struct OfficerStatRow: View {
 //  MARK: - Weekly Report View
 // ═══════════════════════════════════════════════════
 struct SafetySupWeeklyReportView: View {
-    @State private var report:    HseWeeklyReportResponse? = nil
+    @State private var report: HseWeeklyReport? = nil
     @State private var isLoading  = true
     @State private var errorMsg   = ""
 
@@ -381,7 +384,9 @@ struct SafetySupWeeklyReportView: View {
                     if rep.rows.isEmpty {
                         Section { Text("No data for this week.").foregroundColor(.secondary) }
                     } else {
-                        let prevMap = Dictionary(uniqueKeysWithValues: rep.prev_rows.map { ($0.officer_id, $0) })
+                        let prevMap: [Int: HseReportRow] = rep.prev_rows.map {
+                            Dictionary(uniqueKeysWithValues: $0.map { ($0.officer_id, $0) })
+                        } ?? [:]
                         ForEach(rep.rows.sorted { $0.score > $1.score }) { row in
                             let prev = prevMap[row.officer_id]
                             weeklyRow(row, prev: prev)
@@ -396,7 +401,7 @@ struct SafetySupWeeklyReportView: View {
     }
 
     @ViewBuilder
-    private func weeklyRow(_ row: HseWeeklyRow, prev: HseWeeklyRow?) -> some View {
+    private func weeklyRow(_ row: HseReportRow, prev: HseReportRow?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(row.officer_name).font(.headline)
@@ -461,6 +466,183 @@ struct SafetySupWeeklyReportView: View {
     private func load() async {
         isLoading = true; errorMsg = ""
         do { report = try await NetworkManager.shared.getHseWeeklyReport() }
+        catch { errorMsg = error.localizedDescription }
+        isLoading = false
+    }
+}
+
+// ═══════════════════════════════════════════════════
+//  MARK: - Officer Detail View
+// ═══════════════════════════════════════════════════
+struct OfficerDetailView: View {
+    let officerId:   Int
+    let officerName: String
+
+    @State private var detail:    HseOfficerDetailResponse? = nil
+    @State private var isLoading  = true
+    @State private var errorMsg   = ""
+    @State private var days       = 30
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView("Loading…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !errorMsg.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle).foregroundColor(.orange)
+                    Text(errorMsg).font(.caption).foregroundColor(.secondary)
+                    Button("Retry") { Task { await load() } }.buttonStyle(.bordered)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let d = detail {
+                List {
+                    // Today's status
+                    Section(header: Text("Today")) {
+                        if let ci = d.checkin_today {
+                            Label("Checked in · \(ci.location ?? "—")",
+                                  systemImage: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                        } else {
+                            Label("No location today", systemImage: "xmark.circle")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    // Summary counters
+                    Section(header: Text("Last \(days) Days")) {
+                        summaryGrid(d)
+                    }
+
+                    // Observations
+                    if !d.observations.isEmpty {
+                        Section(header: Label("Observations (\(d.observations.count))",
+                                              systemImage: "eye.fill")) {
+                            ForEach(d.observations.prefix(10)) { obs in
+                                obsRow(obs)
+                            }
+                        }
+                    }
+
+                    // TBTs
+                    if !d.tbts.isEmpty {
+                        Section(header: Label("TBT (\(d.tbts.count))",
+                                              systemImage: "person.2.badge.gearshape")) {
+                            ForEach(d.tbts.prefix(10)) { t in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(t.topic).font(.subheadline).fontWeight(.medium)
+                                    HStack(spacing: 10) {
+                                        Text(t.date).font(.caption2).foregroundColor(.secondary)
+                                        Text("\(t.attendee_count) attendees")
+                                            .font(.caption2).foregroundColor(.purple)
+                                    }
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+
+                    // Near Misses
+                    if !d.near_misses.isEmpty {
+                        Section(header: Label("Near Miss (\(d.near_misses.count))",
+                                              systemImage: "exclamationmark.triangle.fill")
+                            .foregroundColor(.red)) {
+                            ForEach(d.near_misses.prefix(5)) { nm in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(nm.description).font(.subheadline)
+                                        .lineLimit(2)
+                                    Text(nm.date).font(.caption2).foregroundColor(.secondary)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+
+                    // JSO
+                    if !d.jso_closures.isEmpty {
+                        Section(header: Label("JSO Closures (\(d.jso_closures.count))",
+                                              systemImage: "doc.badge.plus")) {
+                            ForEach(d.jso_closures.prefix(10)) { j in
+                                HStack {
+                                    Text(j.jso_number).font(.subheadline).fontWeight(.medium)
+                                    Spacer()
+                                    Text(j.date).font(.caption2).foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+
+                    // Period picker
+                    Section {
+                        Picker("Period", selection: $days) {
+                            Text("7 days").tag(7)
+                            Text("30 days").tag(30)
+                            Text("90 days").tag(90)
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: days) { _ in Task { await load() } }
+                    }
+                }
+                .refreshable { await load() }
+            }
+        }
+        .navigationTitle(officerName)
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+    }
+
+    @ViewBuilder
+    private func summaryGrid(_ d: HseOfficerDetailResponse) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()),
+                            GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            miniStat("Obs",  d.observations.count,  .blue)
+            miniStat("TBT",  d.tbts.count,          .purple)
+            miniStat("NM",   d.near_misses.count,   d.near_misses.isEmpty ? .secondary : .red)
+            miniStat("JSO",  d.jso_closures.count,  .teal)
+            miniStat("BBS",  d.bbs.reduce(0) { $0 + $1.card_count }, .orange)
+            miniStat("Days", d.checkin_history.count, .green)
+        }
+    }
+
+    @ViewBuilder
+    private func miniStat(_ label: String, _ value: Int, _ color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text("\(value)").font(.title3).fontWeight(.bold).foregroundColor(color)
+            Text(label).font(.caption2).foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(8)
+        .background(color.opacity(0.07))
+        .cornerRadius(8)
+    }
+
+    @ViewBuilder
+    private func obsRow(_ obs: HseObservationItem) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle()
+                .fill(obs.risk_level == "H" ? Color.red :
+                      obs.risk_level == "M" ? Color.orange : Color.blue)
+                .frame(width: 8, height: 8)
+                .padding(.top, 6)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(obs.description).font(.subheadline).lineLimit(2)
+                HStack(spacing: 8) {
+                    Text(obs.date).font(.caption2).foregroundColor(.secondary)
+                    Text(obs.obs_type.replacingOccurrences(of: "_", with: " "))
+                        .font(.caption2).foregroundColor(.secondary)
+                    Text(obs.status == "open" ? "Open" : "Closed")
+                        .font(.caption2).fontWeight(.semibold)
+                        .foregroundColor(obs.status == "open" ? .orange : .green)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func load() async {
+        isLoading = true; errorMsg = ""
+        do { detail = try await NetworkManager.shared.hseOfficerDetail(officerId: officerId, days: days) }
         catch { errorMsg = error.localizedDescription }
         isLoading = false
     }

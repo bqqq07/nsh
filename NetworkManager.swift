@@ -668,47 +668,13 @@ struct HseObservationsResponse: Codable {
     let total: Int
 }
 
-struct HseHighRiskItem: Codable, Identifiable {
-    let id:          Int
-    let date:        String
-    let officer:     String
-    let category:    String
-    let location:    String
-    let description: String
-}
-
-struct HseDashboardResponse: Codable {
-    let today:           String
-    let week_start:      String
-    let high_risk_open:  [HseHighRiskItem]
-}
-
-struct HseWeeklyRow: Codable, Identifiable {
-    let officer_id:       Int
-    let officer_name:     String
-    let checkin_days:     Int
-    let obs_total:        Int
-    let obs_unsafe_act:   Int
-    let obs_unsafe_cond:  Int
-    let obs_positive:     Int
-    let obs_high:         Int
-    let obs_open:         Int
-    let jso:              Int
-    let tbt:              Int
-    let tbt_attendees:    Int
-    let nm:               Int
-    let bbs:              Int
-    let ptw:              Int
-    let avg_insp:         Double?
-    let score:            Double
-    var id: Int { officer_id }
-}
-
-struct HseWeeklyReportResponse: Codable {
-    let week_start: String
-    let week_end:   String
-    let rows:       [HseWeeklyRow]
-    let prev_rows:  [HseWeeklyRow]
+struct HseAccessEntry: Codable, Identifiable {
+    let user_id:   Int
+    let name:      String
+    let code:      String
+    let role:      String
+    let access_id: Int
+    var id: Int { access_id }
 }
 
 struct HseJsoItem: Codable, Identifiable {
@@ -1083,16 +1049,16 @@ extension NetworkManager {
     }
 
     // Observations
-    func getHseDashboard() async throws -> HseDashboardResponse {
+    func getHseDashboard() async throws -> HseDashboard {
         let (data, _) = try await session.data(for: makeRequest("/api/hse/dashboard"))
-        return try JSONDecoder().decode(HseDashboardResponse.self, from: data)
+        return try JSONDecoder().decode(HseDashboard.self, from: data)
     }
 
-    func getHseWeeklyReport(weekStart: String? = nil) async throws -> HseWeeklyReportResponse {
+    func getHseWeeklyReport(weekStart: String? = nil) async throws -> HseWeeklyReport {
         var path = "/api/hse/reports/weekly"
         if let ws = weekStart { path += "?week_start=\(ws)" }
         let (data, _) = try await session.data(for: makeRequest(path))
-        return try JSONDecoder().decode(HseWeeklyReportResponse.self, from: data)
+        return try JSONDecoder().decode(HseWeeklyReport.self, from: data)
     }
 
     func hseObservations(page: Int = 1, status: String = "") async throws -> HseObservationsResponse {
@@ -1697,6 +1663,32 @@ extension NetworkManager {
                 locationPkg: d["location_pkg"] as? Int,
                 locationUnit: d["location_unit"] as? String
             )
+        }
+    }
+
+    // ── Admin: HSE Access ─────────────────────────────────────────────
+    func adminHseAccessList() async throws -> [HseAccessEntry] {
+        let (data, _) = try await session.data(for: makeRequest("/api/admin/hse-access"))
+        return try JSONDecoder().decode([HseAccessEntry].self, from: data)
+    }
+
+    func adminHseAccessGrant(code: String) async throws -> String {
+        let body = try JSONSerialization.data(withJSONObject: ["code": code])
+        let req = makeRequest("/api/admin/hse-access/grant", method: "POST", body: body)
+        let (data, resp) = try await session.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw NSError(domain: "HSE", code: 0, userInfo: [NSLocalizedDescriptionKey: msg ?? "Error"])
+        }
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return json?["name"] as? String ?? code
+    }
+
+    func adminHseAccessRevoke(userId: Int) async throws {
+        let req = makeRequest("/api/admin/hse-access/\(userId)", method: "DELETE")
+        let (_, resp) = try await session.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NSError(domain: "HSE", code: 0, userInfo: [NSLocalizedDescriptionKey: "Failed to revoke"])
         }
     }
 }
