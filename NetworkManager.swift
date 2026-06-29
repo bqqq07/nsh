@@ -737,6 +737,7 @@ struct HseNearMissItem: Codable, Identifiable {
     let action_taken:    String
     let reported_to:     String
     let photo_path:      String?
+    let officer_name:    String?
 }
 
 struct HseNearMissResponse: Codable {

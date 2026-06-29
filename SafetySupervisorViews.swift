@@ -52,10 +52,10 @@ struct SafetySupMonitorView: View {
                 NavigationLink(destination: HSEObservationsView(allowEditing: false)) {
                     Label("Observations", systemImage: "eye.fill")
                 }
-                NavigationLink(destination: HSETbtView()) {
+                NavigationLink(destination: HSETbtView(allowEditing: false)) {
                     Label("TBT", systemImage: "person.2.badge.gearshape")
                 }
-                NavigationLink(destination: HSENearMissView()) {
+                NavigationLink(destination: HSENearMissView(allowEditing: false)) {
                     Label("Near Miss", systemImage: "exclamationmark.triangle.fill")
                         .foregroundColor(.red)
                 }

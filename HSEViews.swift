@@ -929,6 +929,8 @@ struct HSENewJsoView: View {
 //  MARK: - 4. TBT View
 // ═══════════════════════════════════════════════════
 struct HSETbtView: View {
+    var allowEditing: Bool = true
+
     @State private var items:    [HseTbtItem] = []
     @State private var page      = 1
     @State private var pages     = 1
@@ -967,14 +969,17 @@ struct HSETbtView: View {
                                 }
                                 .padding(.vertical, 4)
                             }
-                            .swipeActions(edge: .leading) {
-                                Button { editItem = t } label: { Label("تعديل", systemImage: "pencil") }
-                                    .tint(.orange)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) { Task { await delete(id: t.id) } } label: {
-                                    Label("حذف", systemImage: "trash")
-                                }
+                            .if(allowEditing) { view in
+                                view
+                                    .swipeActions(edge: .leading) {
+                                        Button { editItem = t } label: { Label("تعديل", systemImage: "pencil") }
+                                            .tint(.orange)
+                                    }
+                                    .swipeActions(edge: .trailing) {
+                                        Button(role: .destructive) { Task { await delete(id: t.id) } } label: {
+                                            Label("حذف", systemImage: "trash")
+                                        }
+                                    }
                             }
                         }
                         if page < pages {
@@ -987,12 +992,14 @@ struct HSETbtView: View {
                 }
             }
             .navigationTitle("Toolbox Talk")
-            .toolbar { ToolbarItem(placement: .navigationBarLeading) {
-                Button { showNew = true } label: { Image(systemName: "plus") }
-            }}
-            .sheet(isPresented: $showNew) { HSENewTbtView { Task { page = 1; await load() } } }
-            .sheet(item: $editItem) { t in
-                HSEEditTbtView(tbt: t) { Task { page = 1; await load() } }
+            .if(allowEditing) { view in
+                view.toolbar { ToolbarItem(placement: .navigationBarLeading) {
+                    Button { showNew = true } label: { Image(systemName: "plus") }
+                }}
+                .sheet(isPresented: $showNew) { HSENewTbtView { Task { page = 1; await load() } } }
+                .sheet(item: $editItem) { t in
+                    HSEEditTbtView(tbt: t) { Task { page = 1; await load() } }
+                }
             }
             .task { await load() }
         }
@@ -1289,6 +1296,8 @@ struct HSENewTbtView: View {
 //  MARK: - 5. Near Miss View
 // ═══════════════════════════════════════════════════
 struct HSENearMissView: View {
+    var allowEditing: Bool = true
+
     @State private var items:    [HseNearMissItem] = []
     @State private var page      = 1
     @State private var pages     = 1
@@ -1314,19 +1323,25 @@ struct HSENearMissView: View {
                                             Text("📍 " + nm.location).font(.caption).foregroundColor(.secondary)
                                         }
                                     }
+                                    if let off = nm.officer_name, !off.isEmpty {
+                                        Text("👷 " + off).font(.caption).foregroundColor(.orange)
+                                    }
                                     Text(nm.description).font(.caption).lineLimit(2)
                                 }
                                 .padding(.vertical, 4)
                             }
-                            .swipeActions(edge: .leading) {
-                                Button { editNm = nm; showEdit = true } label: {
-                                    Label("تعديل", systemImage: "pencil")
-                                }.tint(.blue)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) { Task { await delete(id: nm.id) } } label: {
-                                    Label("حذف", systemImage: "trash")
-                                }
+                            .if(allowEditing) { view in
+                                view
+                                    .swipeActions(edge: .leading) {
+                                        Button { editNm = nm; showEdit = true } label: {
+                                            Label("تعديل", systemImage: "pencil")
+                                        }.tint(.blue)
+                                    }
+                                    .swipeActions(edge: .trailing) {
+                                        Button(role: .destructive) { Task { await delete(id: nm.id) } } label: {
+                                            Label("حذف", systemImage: "trash")
+                                        }
+                                    }
                             }
                         }
                         if page < pages {
@@ -1339,12 +1354,14 @@ struct HSENearMissView: View {
                 }
             }
             .navigationTitle("Near Miss")
-            .toolbar { ToolbarItem(placement: .navigationBarLeading) {
-                Button { showNew = true } label: { Image(systemName: "plus") }
-            }}
-            .sheet(isPresented: $showNew) { HSENewNearMissView { Task { page = 1; await load() } } }
-            .sheet(isPresented: $showEdit) {
-                if let nm = editNm { HSEEditNearMissView(nm: nm) { Task { page = 1; await load() } } }
+            .if(allowEditing) { view in
+                view.toolbar { ToolbarItem(placement: .navigationBarLeading) {
+                    Button { showNew = true } label: { Image(systemName: "plus") }
+                }}
+                .sheet(isPresented: $showNew) { HSENewNearMissView { Task { page = 1; await load() } } }
+                .sheet(isPresented: $showEdit) {
+                    if let nm = editNm { HSEEditNearMissView(nm: nm) { Task { page = 1; await load() } } }
+                }
             }
             .task { await load() }
         }
