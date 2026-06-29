@@ -67,7 +67,7 @@ struct HSEDailyView: View {
     }
 }
 
-// ── Activities menu: Obs / JSO / TBT / NM / PTW ─────────────────────
+// ── Activities menu: Obs / JSO / TBT / NM / PTW / Reports ───────────
 struct HSEActivitiesMenuView: View {
     var body: some View {
         List {
@@ -90,6 +90,12 @@ struct HSEActivitiesMenuView: View {
                 NavigationLink(destination: HSEPtwView()) {
                     Label("PTW", systemImage: "key.fill")
                         .foregroundColor(.mint)
+                }
+            }
+            Section(header: Text("Reports")) {
+                NavigationLink(destination: HSEReportsView()) {
+                    Label("Reports (Weekly / Monthly)", systemImage: "chart.bar.doc.horizontal")
+                        .foregroundColor(.blue)
                 }
             }
         }
@@ -411,15 +417,14 @@ struct HSEObservationsView: View {
     @State private var showEdit  = false
 
     var body: some View {
-        NavigationView {
-            Group {
-                if isLoading && items.isEmpty {
-                    ProgressView()
-                } else {
-                    List {
-                        Picker("الحالة", selection: $statusFilter) {
-                            Text("الكل").tag("")
-                            Text("مفتوحة").tag("open")
+        Group {
+            if isLoading && items.isEmpty {
+                ProgressView()
+            } else {
+                List {
+                    Picker("الحالة", selection: $statusFilter) {
+                        Text("الكل").tag("")
+                        Text("مفتوحة").tag("open")
                             Text("مغلقة").tag("closed")
                         }
                         .pickerStyle(.segmented)
@@ -453,25 +458,24 @@ struct HSEObservationsView: View {
                     }
                     .listStyle(.insetGrouped)
                     .refreshable { page = 1; await load() }
-                }
-            }
-            .navigationTitle("الملاحظات")
-            .toolbar {
-                if allowEditing {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button { showNew = true } label: { Image(systemName: "plus") }
+                    .navigationTitle("الملاحظات")
+                    .toolbar {
+                        if allowEditing {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button { showNew = true } label: { Image(systemName: "plus") }
+                            }
+                        }
                     }
-                }
+                    .sheet(isPresented: $showNew) {
+                        HSENewObservationView { Task { page = 1; await load() } }
+                    }
+                    .sheet(isPresented: $showEdit) {
+                        if let o = editObs {
+                            HSEEditObservationView(obs: o) { Task { page = 1; await load() } }
+                        }
+                    }
+                    .task { await load() }
             }
-            .sheet(isPresented: $showNew) {
-                HSENewObservationView { Task { page = 1; await load() } }
-            }
-            .sheet(isPresented: $showEdit) {
-                if let o = editObs {
-                    HSEEditObservationView(obs: o) { Task { page = 1; await load() } }
-                }
-            }
-            .task { await load() }
         }
     }
 
@@ -542,6 +546,7 @@ struct ObsRow: View {
 struct HSEObservationDetailView: View {
     let obs:      HseObservationItem
     let onUpdate: () -> Void
+    @State private var fullObs:       HseObservationItem? = nil
     @State private var showClose     = false
     @State private var showAddCA     = false
     @State private var closureText   = ""
@@ -551,6 +556,7 @@ struct HSEObservationDetailView: View {
     @State private var message       = ""
     @State private var showAlert     = false
     @Environment(\.dismiss) var dismiss
+    private var current: HseObservationItem { fullObs ?? obs }
     private var isSupervisor: Bool {
         let role = SessionManager.shared.currentUser?.role ?? ""
         return role == "admin" || role == "site_supervisor" || role == "supervisor"
@@ -559,26 +565,38 @@ struct HSEObservationDetailView: View {
     var body: some View {
         Form {
             Section(header: Text("التفاصيل")) {
-                LabeledContent("التاريخ",  value: formatDate(obs.date))
-                LabeledContent("النوع",    value: obs.obs_type.replacingOccurrences(of: "_", with: " ").capitalized)
-                LabeledContent("الفئة",    value: obs.category.isEmpty ? "—" : obs.category)
-                LabeledContent("الخطورة",  value: obs.risk_level.isEmpty ? "—" : obs.risk_level)
-                LabeledContent("الموقع",   value: obs.location.isEmpty ? "—" : obs.location)
-                LabeledContent("الحالة",   value: obs.status == "open" ? "مفتوح" : "مغلق")
+                LabeledContent("التاريخ",  value: formatDate(current.date))
+                LabeledContent("النوع",    value: current.obs_type.replacingOccurrences(of: "_", with: " ").capitalized)
+                LabeledContent("الفئة",    value: current.category.isEmpty ? "—" : current.category)
+                LabeledContent("الخطورة",  value: current.risk_level.isEmpty ? "—" : current.risk_level)
+                LabeledContent("الموقع",   value: current.location.isEmpty ? "—" : current.location)
+                LabeledContent("الحالة",   value: current.status == "open" ? "مفتوح" : "مغلق")
             }
             Section(header: Text("الوصف")) {
-                Text(obs.description.isEmpty ? "—" : obs.description)
+                Text(current.description.isEmpty ? "—" : current.description)
             }
             Section(header: Text("الإجراء الفوري")) {
-                Text(obs.action_taken.isEmpty ? "—" : obs.action_taken)
+                Text(current.action_taken.isEmpty ? "—" : current.action_taken)
             }
-            if obs.status == "closed" {
+            if current.status == "closed" {
                 Section(header: Text("إجراء الإغلاق")) {
-                    if let d = obs.closed_at { Text("تاريخ الإغلاق: " + formatDate(d)).font(.caption).foregroundColor(.secondary) }
-                    Text(obs.closure_action.isEmpty ? "—" : obs.closure_action)
+                    if let d = current.closed_at { Text("تاريخ الإغلاق: " + formatDate(d)).font(.caption).foregroundColor(.secondary) }
+                    Text(current.closure_action.isEmpty ? "—" : current.closure_action)
                 }
             }
-            if obs.status == "open" {
+            let photos = current.photos ?? []
+            if !photos.isEmpty {
+                Section(header: Text("الصور (\(photos.count))")) {
+                    ForEach(photos, id: \.path) { p in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(p.photo_type == "after" ? "بعد" : "قبل")
+                                .font(.caption).foregroundColor(.secondary)
+                            HSEPhotoView(path: p.path)
+                        }
+                    }
+                }
+            }
+            if current.status == "open" {
                 Section {
                     Button("إغلاق الملاحظة") { showClose = true }
                         .foregroundColor(.green)
@@ -590,6 +608,7 @@ struct HSEObservationDetailView: View {
             }
         }
         .navigationTitle("تفاصيل الملاحظة")
+        .task { fullObs = try? await NetworkManager.shared.hseObservationDetail(id: obs.id) }
         .sheet(isPresented: $showAddCA) {
             HSENewCorrectiveActionView(observationId: obs.id, onSaved: { onUpdate(); dismiss() })
         }
@@ -841,14 +860,15 @@ struct HSEJsoView: View {
     @State private var showNew   = false
     @State private var editJso: HseJsoItem? = nil
     @State private var showEdit  = false
+    @State private var selJso:   HseJsoItem? = nil
 
     var body: some View {
-        NavigationView {
-            Group {
-                if isLoading && items.isEmpty { ProgressView() }
-                else {
-                    List {
-                        ForEach(items) { j in
+        Group {
+            if isLoading && items.isEmpty { ProgressView() }
+            else {
+                List {
+                    ForEach(items) { j in
+                        Button { selJso = j } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
                                     Text("JSO #\(j.jso_number)").font(.headline)
@@ -863,35 +883,38 @@ struct HSEJsoView: View {
                                 }
                             }
                             .padding(.vertical, 4)
-                            .swipeActions(edge: .leading) {
-                                Button { editJso = j; showEdit = true } label: {
-                                    Label("تعديل", systemImage: "pencil")
-                                }.tint(.blue)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) { Task { await delete(id: j.id) } } label: {
-                                    Label("حذف", systemImage: "trash")
-                                }
-                            }
+                            .contentShape(Rectangle())
                         }
-                        if page < pages {
-                            Button("تحميل المزيد...") { Task { page += 1; await loadMore() } }
-                                .foregroundColor(.blue).frame(maxWidth: .infinity, alignment: .center)
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .leading) {
+                            Button { editJso = j; showEdit = true } label: {
+                                Label("تعديل", systemImage: "pencil")
+                            }.tint(.blue)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) { Task { await delete(id: j.id) } } label: {
+                                Label("حذف", systemImage: "trash")
+                            }
                         }
                     }
-                    .listStyle(.insetGrouped)
-                    .refreshable { page = 1; await load() }
+                    if page < pages {
+                        Button("تحميل المزيد...") { Task { page += 1; await loadMore() } }
+                            .foregroundColor(.blue).frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
+                .listStyle(.insetGrouped)
+                .refreshable { page = 1; await load() }
+                .navigationTitle("JSO Closure")
+                .toolbar { ToolbarItem(placement: .navigationBarLeading) {
+                    Button { showNew = true } label: { Image(systemName: "plus") }
+                }}
+                .sheet(isPresented: $showNew) { HSENewJsoView { Task { page = 1; await load() } } }
+                .sheet(isPresented: $showEdit) {
+                    if let j = editJso { HSEEditJsoView(jso: j) { Task { page = 1; await load() } } }
+                }
+                .sheet(item: $selJso) { HSEJsoDetailSheet(jso: $0) }
+                .task { await load() }
             }
-            .navigationTitle("إغلاق JSO")
-            .toolbar { ToolbarItem(placement: .navigationBarLeading) {
-                Button { showNew = true } label: { Image(systemName: "plus") }
-            }}
-            .sheet(isPresented: $showNew) { HSENewJsoView { Task { page = 1; await load() } } }
-            .sheet(isPresented: $showEdit) {
-                if let j = editJso { HSEEditJsoView(jso: j) { Task { page = 1; await load() } } }
-            }
-            .task { await load() }
         }
     }
 
@@ -1003,69 +1026,67 @@ struct HSETbtView: View {
     @State private var editItem: HseTbtItem? = nil
 
     var body: some View {
-        NavigationView {
-            Group {
-                if isLoading && items.isEmpty { ProgressView() }
-                else {
-                    List {
-                        ForEach(items) { t in
-                            NavigationLink(destination: HSETbtDetailView(tbt: t)) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(t.topic).font(.headline).lineLimit(1)
-                                        Spacer()
-                                        Text(formatDate(t.date)).font(.caption).foregroundColor(.secondary)
+        Group {
+            if isLoading && items.isEmpty { ProgressView() }
+            else {
+                List {
+                    ForEach(items) { t in
+                        NavigationLink(destination: HSETbtDetailView(tbt: t)) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(t.topic).font(.headline).lineLimit(1)
+                                    Spacer()
+                                    Text(formatDate(t.date)).font(.caption).foregroundColor(.secondary)
+                                }
+                                HStack {
+                                    if !t.location.isEmpty {
+                                        Text("📍 " + t.location).font(.caption).foregroundColor(.secondary)
                                     }
-                                    HStack {
-                                        if !t.location.isEmpty {
-                                            Text("📍 " + t.location).font(.caption).foregroundColor(.secondary)
-                                        }
-                                        Spacer()
-                                        Text("\(t.attendee_count) حضور")
-                                            .font(.caption).bold()
-                                            .padding(.horizontal, 8).padding(.vertical, 2)
-                                            .background(Color.blue.opacity(0.1))
-                                            .foregroundColor(.blue).cornerRadius(8)
-                                    }
-                                    if let name = t.officer_name, !name.isEmpty {
-                                        Text("👷 " + name).font(.caption).foregroundColor(.purple)
+                                    Spacer()
+                                    Text("\(t.attendee_count) حضور")
+                                        .font(.caption).bold()
+                                        .padding(.horizontal, 8).padding(.vertical, 2)
+                                        .background(Color.blue.opacity(0.1))
+                                        .foregroundColor(.blue).cornerRadius(8)
+                                }
+                                if let name = t.officer_name, !name.isEmpty {
+                                    Text("👷 " + name).font(.caption).foregroundColor(.purple)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .if(allowEditing) { view in
+                            view
+                                .swipeActions(edge: .leading) {
+                                    Button { editItem = t } label: { Label("تعديل", systemImage: "pencil") }
+                                        .tint(.orange)
+                                }
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) { Task { await delete(id: t.id) } } label: {
+                                        Label("حذف", systemImage: "trash")
                                     }
                                 }
-                                .padding(.vertical, 4)
-                            }
-                            .if(allowEditing) { view in
-                                view
-                                    .swipeActions(edge: .leading) {
-                                        Button { editItem = t } label: { Label("تعديل", systemImage: "pencil") }
-                                            .tint(.orange)
-                                    }
-                                    .swipeActions(edge: .trailing) {
-                                        Button(role: .destructive) { Task { await delete(id: t.id) } } label: {
-                                            Label("حذف", systemImage: "trash")
-                                        }
-                                    }
-                            }
-                        }
-                        if page < pages {
-                            Button("تحميل المزيد...") { Task { page += 1; await loadMore() } }
-                                .foregroundColor(.blue).frame(maxWidth: .infinity, alignment: .center)
                         }
                     }
-                    .listStyle(.insetGrouped)
-                    .refreshable { page = 1; await load() }
+                    if page < pages {
+                        Button("تحميل المزيد...") { Task { page += 1; await loadMore() } }
+                            .foregroundColor(.blue).frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
-            }
-            .navigationTitle("Toolbox Talk")
-            .if(allowEditing) { view in
-                view.toolbar { ToolbarItem(placement: .navigationBarLeading) {
-                    Button { showNew = true } label: { Image(systemName: "plus") }
-                }}
-                .sheet(isPresented: $showNew) { HSENewTbtView { Task { page = 1; await load() } } }
-                .sheet(item: $editItem) { t in
-                    HSEEditTbtView(tbt: t) { Task { page = 1; await load() } }
+                .listStyle(.insetGrouped)
+                .navigationTitle("Toolbox Talk")
+                .if(allowEditing) { view in
+                    view.toolbar { ToolbarItem(placement: .navigationBarLeading) {
+                        Button { showNew = true } label: { Image(systemName: "plus") }
+                    }}
+                    .sheet(isPresented: $showNew) { HSENewTbtView { Task { page = 1; await load() } } }
+                    .sheet(item: $editItem) { t in
+                        HSEEditTbtView(tbt: t) { Task { page = 1; await load() } }
+                    }
                 }
+                .refreshable { page = 1; await load() }
+                .task { await load() }
             }
-            .task { await load() }
         }
     }
 
@@ -1371,63 +1392,61 @@ struct HSENearMissView: View {
     @State private var showEdit  = false
 
     var body: some View {
-        NavigationView {
-            Group {
-                if isLoading && items.isEmpty { ProgressView() }
-                else {
-                    List {
-                        ForEach(items) { nm in
-                            NavigationLink(destination: HSENearMissDetailView(nm: nm)) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red)
-                                        Text(formatDate(nm.date)).font(.subheadline).bold()
-                                        Spacer()
-                                        if !nm.location.isEmpty {
-                                            Text("📍 " + nm.location).font(.caption).foregroundColor(.secondary)
-                                        }
+        Group {
+            if isLoading && items.isEmpty { ProgressView() }
+            else {
+                List {
+                    ForEach(items) { nm in
+                        NavigationLink(destination: HSENearMissDetailView(nm: nm)) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red)
+                                    Text(formatDate(nm.date)).font(.subheadline).bold()
+                                    Spacer()
+                                    if !nm.location.isEmpty {
+                                        Text("📍 " + nm.location).font(.caption).foregroundColor(.secondary)
                                     }
-                                    if let off = nm.officer_name, !off.isEmpty {
-                                        Text("👷 " + off).font(.caption).foregroundColor(.orange)
-                                    }
-                                    Text(nm.description).font(.caption).lineLimit(2)
                                 }
-                                .padding(.vertical, 4)
+                                if let off = nm.officer_name, !off.isEmpty {
+                                    Text("👷 " + off).font(.caption).foregroundColor(.orange)
+                                }
+                                Text(nm.description).font(.caption).lineLimit(2)
                             }
-                            .if(allowEditing) { view in
-                                view
-                                    .swipeActions(edge: .leading) {
-                                        Button { editNm = nm; showEdit = true } label: {
-                                            Label("تعديل", systemImage: "pencil")
-                                        }.tint(.blue)
-                                    }
-                                    .swipeActions(edge: .trailing) {
-                                        Button(role: .destructive) { Task { await delete(id: nm.id) } } label: {
-                                            Label("حذف", systemImage: "trash")
-                                        }
-                                    }
-                            }
+                            .padding(.vertical, 4)
                         }
-                        if page < pages {
-                            Button("تحميل المزيد...") { Task { page += 1; await loadMore() } }
-                                .foregroundColor(.blue).frame(maxWidth: .infinity, alignment: .center)
+                        .if(allowEditing) { view in
+                            view
+                                .swipeActions(edge: .leading) {
+                                    Button { editNm = nm; showEdit = true } label: {
+                                        Label("تعديل", systemImage: "pencil")
+                                    }.tint(.blue)
+                                }
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) { Task { await delete(id: nm.id) } } label: {
+                                        Label("حذف", systemImage: "trash")
+                                    }
+                                }
                         }
                     }
-                    .listStyle(.insetGrouped)
-                    .refreshable { page = 1; await load() }
+                    if page < pages {
+                        Button("تحميل المزيد...") { Task { page += 1; await loadMore() } }
+                            .foregroundColor(.blue).frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
-            }
-            .navigationTitle("Near Miss")
-            .if(allowEditing) { view in
-                view.toolbar { ToolbarItem(placement: .navigationBarLeading) {
-                    Button { showNew = true } label: { Image(systemName: "plus") }
-                }}
-                .sheet(isPresented: $showNew) { HSENewNearMissView { Task { page = 1; await load() } } }
-                .sheet(isPresented: $showEdit) {
-                    if let nm = editNm { HSEEditNearMissView(nm: nm) { Task { page = 1; await load() } } }
+                .listStyle(.insetGrouped)
+                .navigationTitle("Near Miss")
+                .if(allowEditing) { view in
+                    view.toolbar { ToolbarItem(placement: .navigationBarLeading) {
+                        Button { showNew = true } label: { Image(systemName: "plus") }
+                    }}
+                    .sheet(isPresented: $showNew) { HSENewNearMissView { Task { page = 1; await load() } } }
+                    .sheet(isPresented: $showEdit) {
+                        if let nm = editNm { HSEEditNearMissView(nm: nm) { Task { page = 1; await load() } } }
+                    }
                 }
+                .refreshable { page = 1; await load() }
+                .task { await load() }
             }
-            .task { await load() }
         }
     }
 
@@ -2224,8 +2243,8 @@ struct HSEReportsView: View {
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $tab) {
-                Text("أسبوعي").tag(0)
-                Text("شهري").tag(1)
+                Text("Weekly").tag(0)
+                Text("Monthly").tag(1)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal).padding(.vertical, 8)
@@ -2233,8 +2252,7 @@ struct HSEReportsView: View {
             if tab == 0 { HSEWeeklyReportContent() }
             else         { HSEMonthlyReportContent() }
         }
-        .navigationTitle("التقارير")
-        .environment(\.layoutDirection, .rightToLeft)
+        .navigationTitle("Reports")
     }
 }
 
@@ -3806,53 +3824,51 @@ struct HSEPtwView: View {
                        "Working at Height","Electrical Isolation","Lifting","Other"]
 
     var body: some View {
-        NavigationView {
-            List {
-                if isLoading {
-                    Section { ProgressView() }
-                } else {
-                    if !errorMsg.isEmpty {
-                        Section { Text(errorMsg).foregroundColor(.red).font(.caption) }
-                    }
-                    // Active PTW
-                    let active  = ptw.filter { $0.status == "active" && !$0.expired }
-                    let expiring = ptw.filter { $0.status == "active" && $0.expired }
-                    let others  = ptw.filter { $0.status != "active" }
+        List {
+            if isLoading {
+                Section { ProgressView() }
+            } else {
+                if !errorMsg.isEmpty {
+                    Section { Text(errorMsg).foregroundColor(.red).font(.caption) }
+                }
+                // Active PTW
+                let active  = ptw.filter { $0.status == "active" && !$0.expired }
+                let expiring = ptw.filter { $0.status == "active" && $0.expired }
+                let others  = ptw.filter { $0.status != "active" }
 
-                    if !active.isEmpty {
-                        Section(header: Text("نشطة")) {
-                            ForEach(active) { p in ptwRow(p) }
-                        }
+                if !active.isEmpty {
+                    Section(header: Text("Active")) {
+                        ForEach(active) { p in ptwRow(p) }
                     }
-                    if !expiring.isEmpty {
-                        Section(header: Label("منتهية — تحتاج تجديد", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)) {
-                            ForEach(expiring) { p in ptwRow(p) }
-                        }
+                }
+                if !expiring.isEmpty {
+                    Section(header: Label("Expired — needs renewal", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)) {
+                        ForEach(expiring) { p in ptwRow(p) }
                     }
-                    if !others.isEmpty {
-                        Section(header: Text("مغلقة / موقوفة")) {
-                            ForEach(others) { p in ptwRow(p) }
-                        }
+                }
+                if !others.isEmpty {
+                    Section(header: Text("Closed / Suspended")) {
+                        ForEach(others) { p in ptwRow(p) }
                     }
-                    if ptw.isEmpty {
-                        Section { Text("لا توجد بيرمتات مسجّلة.").foregroundColor(.secondary) }
-                    }
+                }
+                if ptw.isEmpty {
+                    Section { Text("No permits registered.").foregroundColor(.secondary) }
                 }
             }
-            .navigationTitle("Permit to Work")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button { showForm = true } label: { Image(systemName: "plus") }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
-                }
-            }
-            .task { await load() }
-            .sheet(isPresented: $showForm) { addForm }
         }
-        .environment(\.layoutDirection, .rightToLeft)
+        .navigationTitle("Permit to Work")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button { showForm = true } label: { Image(systemName: "plus") }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+            }
+        }
+        .refreshable { await load() }
+        .task { await load() }
+        .sheet(isPresented: $showForm) { addForm }
     }
 
     @ViewBuilder private func ptwRow(_ p: HsePtwItem) -> some View {

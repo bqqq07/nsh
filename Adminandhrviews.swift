@@ -1627,10 +1627,12 @@ struct AdminNotifyView: View {
     @State private var loadingUsers = false
 
     let targets = [
-        ("all",             "الكل (مشرفون + سايت)"),
-        ("supervisors",     "المشرفون فقط"),
-        ("site_supervisors","السايت سوبرفايزر فقط"),
-        ("custom",          "مخصص"),
+        ("all",               "All (Supervisors + Site + HSE)"),
+        ("supervisors",       "Supervisors only"),
+        ("site_supervisors",  "Site Supervisors only"),
+        ("safety_officers",   "Safety Officers only"),
+        ("safety_supervisors","Safety Supervisors only"),
+        ("custom",            "Custom selection"),
     ]
 
     var body: some View {

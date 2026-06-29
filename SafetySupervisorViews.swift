@@ -81,22 +81,35 @@ struct SafetySupMonitorView: View {
                 NavigationLink(destination: SafetySupWeeklyReportView()) {
                     Label("Weekly Report", systemImage: "doc.text.fill")
                 }
+                NavigationLink(destination: SafetySupMonthlyReportView()) {
+                    Label("Monthly Report", systemImage: "calendar.badge.clock")
+                }
             }
         }
         .navigationTitle("Activity")
     }
 }
 
-// ── Check-in today view for supervisor (shows all officers) ──────────
+// ── Check-in view for supervisor (shows all officers, supports date picker) ──
 struct SafetySupCheckinView: View {
-    @State private var officers: [SafetyOfficerStat] = []
-    @State private var isLoading = true
+    @State private var officers:   [SafetyOfficerStat] = []
+    @State private var isLoading   = true
+    @State private var selectedDate = Date()
 
     private var checkedIn: [SafetyOfficerStat] { officers.filter { $0.checkedIn } }
     private var notIn:     [SafetyOfficerStat] { officers.filter { !$0.checkedIn } }
 
+    private var dateString: String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: selectedDate)
+    }
+
     var body: some View {
         List {
+            Section {
+                DatePicker("Date", selection: $selectedDate, in: ...Date(), displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .onChange(of: selectedDate) { _ in Task { await load() } }
+            }
             if isLoading {
                 Section { ProgressView() }
             } else {
@@ -121,21 +134,17 @@ struct SafetySupCheckinView: View {
 
                 if !checkedIn.isEmpty {
                     Section(header: Text("Present (\(checkedIn.count))")) {
-                        ForEach(checkedIn) { o in
-                            checkinRow(o, isIn: true)
-                        }
+                        ForEach(checkedIn) { o in checkinRow(o, isIn: true) }
                     }
                 }
                 if !notIn.isEmpty {
                     Section(header: Text("No Location (\(notIn.count))")) {
-                        ForEach(notIn) { o in
-                            checkinRow(o, isIn: false)
-                        }
+                        ForEach(notIn) { o in checkinRow(o, isIn: false) }
                     }
                 }
             }
         }
-        .navigationTitle("Locations Today")
+        .navigationTitle("Locations")
         .refreshable { await load() }
         .task { await load() }
     }
@@ -161,7 +170,7 @@ struct SafetySupCheckinView: View {
 
     private func load() async {
         isLoading = true
-        officers = (try? await NetworkManager.shared.getSafetyOfficers()) ?? []
+        officers = (try? await NetworkManager.shared.getSafetyOfficers(date: dateString)) ?? []
         isLoading = false
     }
 }
@@ -174,6 +183,7 @@ struct SafetySupervisorHomeView: View {
     @State private var highRisk:     [HseHighRiskItem] = []
     @State private var isLoading     = true
     @State private var errorMsg      = ""
+    @State private var statsDays     = 7
 
     private var checkedIn: Int  { officers.filter { $0.checkedIn }.count }
     private var totalObs: Int   { officers.reduce(0) { $0 + $1.obsWeek } }
@@ -197,6 +207,17 @@ struct SafetySupervisorHomeView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List {
+                        // Period picker
+                        Section {
+                            Picker("Period", selection: $statsDays) {
+                                Text("This Week").tag(7)
+                                Text("30 Days").tag(30)
+                                Text("90 Days").tag(90)
+                            }
+                            .pickerStyle(.segmented)
+                            .onChange(of: statsDays) { _ in Task { await load() } }
+                        }
+
                         // Summary KPI cards
                         Section {
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
@@ -205,9 +226,9 @@ struct SafetySupervisorHomeView: View {
                                          icon: "checkmark.seal.fill")
                                 statCard(title: "Officers", value: "\(officers.count)",
                                          color: .blue, icon: "person.3.fill")
-                                statCard(title: "Obs (week)", value: "\(totalObs)",
+                                statCard(title: "Obs", value: "\(totalObs)",
                                          color: .blue, icon: "eye.fill")
-                                statCard(title: "TBT (week)", value: "\(totalTbt)",
+                                statCard(title: "TBT", value: "\(totalTbt)",
                                          color: .purple, icon: "person.2.badge.gearshape")
                                 statCard(title: "Near Miss", value: "\(totalNm)",
                                          color: totalNm > 0 ? .red : .secondary, icon: "exclamationmark.triangle.fill")
@@ -271,7 +292,7 @@ struct SafetySupervisorHomeView: View {
         isLoading = true
         errorMsg = ""
         do {
-            async let officersTask = NetworkManager.shared.getSafetyOfficers()
+            async let officersTask = NetworkManager.shared.getSafetyOfficers(days: statsDays)
             async let dashTask     = NetworkManager.shared.getHseDashboard()
             officers  = try await officersTask
             highRisk  = (try? await dashTask)?.high_risk_open ?? []
@@ -489,6 +510,132 @@ struct SafetySupWeeklyReportView: View {
 }
 
 // ═══════════════════════════════════════════════════
+//  MARK: - Monthly Report View (Supervisor)
+// ═══════════════════════════════════════════════════
+struct SafetySupMonthlyReportView: View {
+    @State private var report:    HseMonthlyReport? = nil
+    @State private var isLoading  = true
+    @State private var errorMsg   = ""
+    @State private var monthOffset = 0
+
+    private var targetDate: Date {
+        Calendar.current.date(byAdding: .month, value: monthOffset, to: Date()) ?? Date()
+    }
+    private var targetYear:  Int { Calendar.current.component(.year,  from: targetDate) }
+    private var targetMonth: Int { Calendar.current.component(.month, from: targetDate) }
+    private var monthLabel: String {
+        let f = DateFormatter(); f.dateFormat = "MMMM yyyy"; f.locale = Locale(identifier: "en")
+        return f.string(from: targetDate)
+    }
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView("Loading report…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !errorMsg.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundColor(.orange)
+                    Text(errorMsg).font(.caption).foregroundColor(.secondary)
+                    Button("Retry") { Task { await load() } }.buttonStyle(.bordered)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let rep = report {
+                List {
+                    Section {
+                        HStack {
+                            Button { monthOffset -= 1; Task { await load() } } label: {
+                                Image(systemName: "chevron.left").font(.title3).padding(8)
+                            }
+                            Spacer()
+                            Text(monthLabel).font(.headline)
+                            Spacer()
+                            Button { if monthOffset < 0 { monthOffset += 1; Task { await load() } } } label: {
+                                Image(systemName: "chevron.right").font(.title3).padding(8)
+                                    .foregroundColor(monthOffset < 0 ? .primary : .secondary)
+                            }
+                            .disabled(monthOffset >= 0)
+                        }
+                    }
+                    if rep.rows.isEmpty {
+                        Section { Text("No data for this month.").foregroundColor(.secondary) }
+                    } else {
+                        let prevMap: [Int: HseReportRow] = rep.prev_rows.map {
+                            Dictionary(uniqueKeysWithValues: $0.map { ($0.officer_id, $0) })
+                        } ?? [:]
+                        ForEach(rep.rows.sorted { $0.score > $1.score }) { row in
+                            monthlyRow(row, prev: prevMap[row.officer_id])
+                        }
+                    }
+                }
+                .refreshable { await load() }
+            }
+        }
+        .navigationTitle("Monthly Report")
+        .task { await load() }
+    }
+
+    @ViewBuilder
+    private func monthlyRow(_ row: HseReportRow, prev: HseReportRow?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(row.officer_name).font(.headline)
+                Spacer()
+                HStack(spacing: 4) {
+                    if let p = prev {
+                        Image(systemName: row.score >= p.score ? "arrow.up.right" : "arrow.down.right")
+                            .font(.caption2)
+                            .foregroundColor(row.score >= p.score ? .green : .red)
+                    }
+                    Text(String(format: "%.1f", row.score))
+                        .font(.subheadline).fontWeight(.bold)
+                        .foregroundColor(scoreColor(row.score))
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(scoreColor(row.score).opacity(0.1)).cornerRadius(6)
+            }
+            HStack(spacing: 4) {
+                Image(systemName: "calendar.badge.checkmark").font(.caption2).foregroundColor(.teal)
+                Text("Check-in: \(row.checkin_days) days").font(.caption).foregroundColor(.secondary)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    monthPill("Obs",  row.obs_total,  prev?.obs_total,  color: .blue)
+                    monthPill("TBT",  row.tbt,        prev?.tbt,        color: .purple)
+                    monthPill("NM",   row.nm,         prev?.nm,         color: .red)
+                    monthPill("JSO",  row.jso,        prev?.jso,        color: .teal)
+                    monthPill("BBS",  row.bbs,        prev?.bbs,        color: .orange)
+                    monthPill("PTW",  row.ptw,        prev?.ptw,        color: .mint)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func monthPill(_ label: String, _ val: Int, _ prev: Int?, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Text(label).font(.caption2).foregroundColor(.secondary)
+            Text("\(val)").font(.caption).fontWeight(.semibold).foregroundColor(color)
+            if let p = prev, val != p {
+                Image(systemName: val > p ? "arrow.up" : "arrow.down")
+                    .font(.system(size: 7))
+                    .foregroundColor(val > p ? .green : .red)
+            }
+        }
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(color.opacity(0.08)).cornerRadius(6)
+    }
+
+    private func scoreColor(_ s: Double) -> Color { s >= 20 ? .green : s >= 10 ? .orange : .red }
+
+    private func load() async {
+        isLoading = true; errorMsg = ""
+        do { report = try await NetworkManager.shared.hseMonthlyReport(year: targetYear, month: targetMonth) }
+        catch { errorMsg = error.localizedDescription }
+        isLoading = false
+    }
+}
+
+// ═══════════════════════════════════════════════════
 //  MARK: - Officer Detail View
 // ═══════════════════════════════════════════════════
 struct OfficerDetailView: View {
@@ -499,6 +646,10 @@ struct OfficerDetailView: View {
     @State private var isLoading  = true
     @State private var errorMsg   = ""
     @State private var days       = 30
+    @State private var selObs:    HseObservationItem?      = nil
+    @State private var selTbt:    HseTbtDetailItem?        = nil
+    @State private var selNm:     HseNearMissItem?         = nil
+    @State private var selJso:    HseJsoItem?              = nil
 
     var body: some View {
         Group {
@@ -537,7 +688,9 @@ struct OfficerDetailView: View {
                         Section(header: Label("Observations (\(d.observations.count))",
                                               systemImage: "eye.fill")) {
                             ForEach(d.observations.prefix(10)) { obs in
-                                obsRow(obs)
+                                Button { selObs = obs } label: {
+                                    obsRow(obs).contentShape(Rectangle())
+                                }.buttonStyle(.plain)
                             }
                         }
                     }
@@ -547,15 +700,18 @@ struct OfficerDetailView: View {
                         Section(header: Label("TBT (\(d.tbts.count))",
                                               systemImage: "person.2.badge.gearshape")) {
                             ForEach(d.tbts.prefix(10)) { t in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(t.topic).font(.subheadline).fontWeight(.medium)
-                                    HStack(spacing: 10) {
-                                        Text(t.date).font(.caption2).foregroundColor(.secondary)
-                                        Text("\(t.attendee_count) attendees")
-                                            .font(.caption2).foregroundColor(.purple)
+                                Button { selTbt = t } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(t.topic).font(.subheadline).fontWeight(.medium)
+                                        HStack(spacing: 10) {
+                                            Text(t.date).font(.caption2).foregroundColor(.secondary)
+                                            Text("\(t.attendee_count) attendees")
+                                                .font(.caption2).foregroundColor(.purple)
+                                        }
                                     }
-                                }
-                                .padding(.vertical, 2)
+                                    .padding(.vertical, 2)
+                                    .contentShape(Rectangle())
+                                }.buttonStyle(.plain)
                             }
                         }
                     }
@@ -566,12 +722,14 @@ struct OfficerDetailView: View {
                                               systemImage: "exclamationmark.triangle.fill")
                             .foregroundColor(.red)) {
                             ForEach(d.near_misses.prefix(5)) { nm in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(nm.description).font(.subheadline)
-                                        .lineLimit(2)
-                                    Text(nm.date).font(.caption2).foregroundColor(.secondary)
-                                }
-                                .padding(.vertical, 2)
+                                Button { selNm = nm } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(nm.description).font(.subheadline).lineLimit(2)
+                                        Text(nm.date).font(.caption2).foregroundColor(.secondary)
+                                    }
+                                    .padding(.vertical, 2)
+                                    .contentShape(Rectangle())
+                                }.buttonStyle(.plain)
                             }
                         }
                     }
@@ -581,11 +739,15 @@ struct OfficerDetailView: View {
                         Section(header: Label("JSO Closures (\(d.jso_closures.count))",
                                               systemImage: "doc.badge.plus")) {
                             ForEach(d.jso_closures.prefix(10)) { j in
-                                HStack {
-                                    Text(j.jso_number).font(.subheadline).fontWeight(.medium)
-                                    Spacer()
-                                    Text(j.date).font(.caption2).foregroundColor(.secondary)
-                                }
+                                Button { selJso = j } label: {
+                                    HStack {
+                                        Text(j.jso_number).font(.subheadline).fontWeight(.medium)
+                                        Spacer()
+                                        Text(j.date).font(.caption2).foregroundColor(.secondary)
+                                        Image(systemName: "chevron.right").font(.caption2).foregroundColor(.secondary)
+                                    }
+                                    .contentShape(Rectangle())
+                                }.buttonStyle(.plain)
                             }
                         }
                     }
@@ -602,6 +764,10 @@ struct OfficerDetailView: View {
                     }
                 }
                 .refreshable { await load() }
+                .sheet(item: $selObs) { HSEObsDetailSheet(obs: $0) }
+                .sheet(item: $selTbt) { HSETbtDetailSheet(tbt: $0) }
+                .sheet(item: $selNm)  { HSENearMissDetailSheet(nm: $0) }
+                .sheet(item: $selJso) { HSEJsoDetailSheet(jso: $0) }
             }
         }
         .navigationTitle(officerName)

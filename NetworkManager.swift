@@ -1645,8 +1645,10 @@ extension NetworkManager {
     }
 
     // ── Safety Supervisor: officers list ──────────────────
-    func getSafetyOfficers() async throws -> [SafetyOfficerStat] {
-        let (data, resp) = try await session.data(for: makeRequest("/api/safety-supervisor/officers"))
+    func getSafetyOfficers(date: String? = nil, days: Int = 7) async throws -> [SafetyOfficerStat] {
+        var path = "/api/safety-supervisor/officers?days=\(days)"
+        if let d = date { path += "&date=\(d)" }
+        let (data, resp) = try await session.data(for: makeRequest(path))
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) { return [] }
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let arr = json?["officers"] as? [[String: Any]] ?? []
@@ -1670,6 +1672,11 @@ extension NetworkManager {
                 locationUnit: d["location_unit"] as? String
             )
         }
+    }
+
+    func hseObservationDetail(id: Int) async throws -> HseObservationItem {
+        let (data, _) = try await session.data(for: makeRequest("/api/hse/observation/\(id)"))
+        return try JSONDecoder().decode(HseObservationItem.self, from: data)
     }
 
     // ── Admin: HSE Access ─────────────────────────────────────────────
