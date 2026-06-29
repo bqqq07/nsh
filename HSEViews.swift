@@ -8,28 +8,80 @@ struct HSEOfficerTabView: View {
     var body: some View {
         TabView {
             HSEOfficerHomeView()
-                .tabItem { Label("الرئيسية", systemImage: "house.fill") }
+                .tabItem { Label("Home", systemImage: "house.fill") }
 
-            HSEObservationsView()
-                .tabItem { Label("الملاحظات", systemImage: "eye.fill") }
+            HSEDailyView()
+                .tabItem { Label("Daily", systemImage: "calendar.badge.plus") }
 
-            HSEPtwView()
-                .tabItem { Label("PTW", systemImage: "doc.badge.checkmark") }
+            NavigationView { HSEActivitiesMenuView() }
+                .tabItem { Label("Activities", systemImage: "list.bullet.clipboard.fill") }
 
-            HSEManpowerView()
-                .tabItem { Label("Man Power", systemImage: "person.3.fill") }
-
-            HSEInspectionView()
-                .tabItem { Label("Inspection", systemImage: "checklist") }
-
-            HSEMoreView()
-                .tabItem { Label("المزيد", systemImage: "ellipsis.circle.fill") }
+            HSEMyCaView()
+                .tabItem { Label("My CAs", systemImage: "checkmark.circle.fill") }
 
             ProfileView()
-                .tabItem { Label("حسابي", systemImage: "person.circle") }
+                .tabItem { Label("Profile", systemImage: "person.circle") }
         }
         .accentColor(Color(hex: "#16a34a"))
-        .environment(\.layoutDirection, .rightToLeft)
+    }
+}
+
+// ── Daily tab: things done every day ────────────────────────────────
+struct HSEDailyView: View {
+    var body: some View {
+        NavigationView {
+            List {
+                Section(header: Text("Daily Tasks")) {
+                    NavigationLink(destination: UserLocationView()) {
+                        Label("My Location", systemImage: "location.fill")
+                            .foregroundColor(.orange)
+                    }
+                    NavigationLink(destination: HSEBbsView()) {
+                        Label("BBS Cards", systemImage: "checkmark.seal.fill")
+                            .foregroundColor(.orange)
+                    }
+                    NavigationLink(destination: HSEInspectionView()) {
+                        Label("Inspection", systemImage: "checklist")
+                            .foregroundColor(.indigo)
+                    }
+                    NavigationLink(destination: HSEManpowerView()) {
+                        Label("Manpower", systemImage: "person.3.fill")
+                            .foregroundColor(.blue)
+                    }
+                }
+            }
+            .navigationTitle("Daily")
+        }
+    }
+}
+
+// ── Activities menu: Obs / JSO / TBT / NM / PTW ─────────────────────
+struct HSEActivitiesMenuView: View {
+    var body: some View {
+        List {
+            Section(header: Text("Safety Records")) {
+                NavigationLink(destination: HSEObservationsView()) {
+                    Label("Observations", systemImage: "eye.fill")
+                }
+                NavigationLink(destination: HSEJsoView()) {
+                    Label("JSO Closure", systemImage: "doc.badge.plus")
+                        .foregroundColor(.teal)
+                }
+                NavigationLink(destination: HSETbtView()) {
+                    Label("Toolbox Talk (TBT)", systemImage: "person.2.badge.gearshape")
+                        .foregroundColor(.purple)
+                }
+                NavigationLink(destination: HSENearMissView()) {
+                    Label("Near Miss", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                }
+                NavigationLink(destination: HSEPtwView()) {
+                    Label("PTW", systemImage: "key.fill")
+                        .foregroundColor(.mint)
+                }
+            }
+        }
+        .navigationTitle("Activities")
     }
 }
 

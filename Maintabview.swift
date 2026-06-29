@@ -51,67 +51,101 @@ struct MainTabView: View {
 
 // ── Supervisor + HSE Dashboard ───────────────────────────────────────
 struct HSESupervisorTabView: View {
+    @State private var pendingCount = 0
+
     var body: some View {
         TabView {
             SupervisorHomeView(showQuickActions: true)
-                .tabItem { Label("الرئيسية", systemImage: "house.fill") }
+                .tabItem { Label("Home", systemImage: "house.fill") }
             EmployeesListView()
-                .tabItem { Label("الموظفون", systemImage: "person.2.fill") }
-            AttendanceView()
-                .tabItem { Label("الحضور", systemImage: "calendar.badge.checkmark") }
+                .tabItem { Label("Employees", systemImage: "person.2.fill") }
+            MyRequestsView()
+                .tabItem { Label("Requests", systemImage: "doc.text.fill") }
+                .badge(pendingCount)
             HSEDashboardView()
                 .tabItem { Label("HSE", systemImage: "shield.checkered") }
             ProfileView()
-                .tabItem { Label("حسابي", systemImage: "person.circle") }
+                .tabItem { Label("Profile", systemImage: "person.circle") }
         }
         .accentColor(Color(hex: "#16a34a"))
-        .environment(\.layoutDirection, .rightToLeft)
+        .task { await loadBadge() }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("RefreshRequests"))) { _ in
+            Task { await loadBadge() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            Task { await loadBadge() }
+        }
+    }
+
+    private func loadBadge() async {
+        let reqs = (try? await NetworkManager.shared.getMyRequests()) ?? []
+        pendingCount = reqs.filter { $0.status == "pending" }.count
     }
 }
 
 // ── Admin + HSE Dashboard ────────────────────────────────────────────
 struct AdminHSETabView: View {
+    @State private var pendingCount = 0
+
     var body: some View {
         TabView {
             AdminDashboardView()
-                .tabItem { Label("الرئيسية", systemImage: "chart.bar.fill") }
+                .tabItem { Label("Home", systemImage: "chart.bar.fill") }
+
+            AdminRequestsView()
+                .tabItem { Label("Requests", systemImage: "tray.full.fill") }
+                .badge(pendingCount)
+
+            EmployeesListView()
+                .tabItem { Label("Employees", systemImage: "person.2.fill") }
 
             HSEDashboardView()
                 .tabItem { Label("HSE", systemImage: "shield.checkered") }
 
-            UserLocationView()
-                .tabItem { Label("Locations", systemImage: "location.fill") }
-
-            EmployeesListView()
-                .tabItem { Label("الموظفون", systemImage: "person.2.fill") }
-
             NavigationView { AdminManagementView() }
-                .tabItem { Label("إدارة", systemImage: "gearshape.2.fill") }
+                .tabItem { Label("Manage", systemImage: "gearshape.2.fill") }
         }
         .accentColor(Color(hex: "#7b5ea7"))
-        .environment(\.layoutDirection, .rightToLeft)
+        .task { await loadBadge() }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("RefreshRequests"))) { _ in
+            Task { await loadBadge() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            Task { await loadBadge() }
+        }
+    }
+
+    private func loadBadge() async {
+        let reqs = (try? await NetworkManager.shared.getAdminRequests(status: "pending")) ?? []
+        pendingCount = reqs.count
     }
 }
 
 struct AdminManagementView: View {
     var body: some View {
         List {
-            Section(header: Text("الطاقم")) {
+            Section(header: Text("Team")) {
                 NavigationLink(destination: SupervisorsRankingView()) {
-                    Label("ترتيب المشرفين", systemImage: "person.3.fill")
+                    Label("Supervisors Ranking", systemImage: "person.3.fill")
                 }
                 NavigationLink(destination: AdminUsersView()) {
-                    Label("المستخدمون", systemImage: "person.badge.key.fill")
+                    Label("Users", systemImage: "person.badge.key.fill")
                 }
             }
-            Section(header: Text("التشغيل")) {
+            Section(header: Text("Operations")) {
                 NavigationLink(destination: AdminAttendanceView()) {
-                    Label("الحضور", systemImage: "calendar.badge.checkmark")
+                    Label("Attendance", systemImage: "calendar.badge.checkmark")
+                }
+                NavigationLink(destination: AdminReportsView()) {
+                    Label("Reports", systemImage: "chart.line.uptrend.xyaxis")
+                }
+                NavigationLink(destination: UserLocationView()) {
+                    Label("Locations", systemImage: "location.fill")
                 }
             }
-            Section(header: Text("التواصل")) {
+            Section(header: Text("Communication")) {
                 NavigationLink(destination: AdminNotifyView()) {
-                    Label("إرسال إشعار", systemImage: "bell.badge.fill")
+                    Label("Send Notification", systemImage: "bell.badge.fill")
                 }
             }
             Section(header: Text("HSE")) {
@@ -121,11 +155,11 @@ struct AdminManagementView: View {
             }
             Section {
                 NavigationLink(destination: ProfileView()) {
-                    Label("حسابي", systemImage: "person.circle")
+                    Label("Profile", systemImage: "person.circle")
                 }
             }
         }
-        .navigationTitle("الإدارة")
+        .navigationTitle("Management")
     }
 }
 
@@ -134,18 +168,17 @@ struct SiteSupervisorHSETabView: View {
     var body: some View {
         TabView {
             NavigationView { SiteDashboardView() }
-                .tabItem { Label("الرئيسية", systemImage: "house.fill") }
+                .tabItem { Label("Home", systemImage: "house.fill") }
             NavigationView { SiteSupervisorsListView() }
-                .tabItem { Label("مشرفوني", systemImage: "person.3.fill") }
+                .tabItem { Label("Supervisors", systemImage: "person.3.fill") }
             NavigationView { SiteAttendanceView() }
-                .tabItem { Label("الحضور", systemImage: "calendar.badge.checkmark") }
+                .tabItem { Label("Attendance", systemImage: "calendar.badge.checkmark") }
             NavigationView { SiteReportsView() }
-                .tabItem { Label("التقارير", systemImage: "chart.bar.fill") }
+                .tabItem { Label("Reports", systemImage: "chart.bar.fill") }
             SiteMoreView(showHSE: true)
-                .tabItem { Label("المزيد", systemImage: "ellipsis.circle.fill") }
+                .tabItem { Label("More", systemImage: "ellipsis.circle.fill") }
         }
         .accentColor(Color(hex: "#6C63FF"))
-        .environment(\.layoutDirection, .rightToLeft)
     }
 }
 
@@ -158,23 +191,22 @@ struct SupervisorTabView: View {
     var body: some View {
         TabView {
             SupervisorHomeView(showQuickActions: false)
-                .tabItem { Label("الرئيسية", systemImage: "house.fill") }
+                .tabItem { Label("Home", systemImage: "house.fill") }
 
             EmployeesListView()
-                .tabItem { Label("الموظفون", systemImage: "person.2.fill") }
+                .tabItem { Label("Employees", systemImage: "person.2.fill") }
 
             AttendanceView()
-                .tabItem { Label("الحضور", systemImage: "calendar.badge.checkmark") }
+                .tabItem { Label("Attendance", systemImage: "calendar.badge.checkmark") }
 
             MyRequestsView()
-                .tabItem { Label("طلباتي", systemImage: "doc.text.fill") }
+                .tabItem { Label("Requests", systemImage: "doc.text.fill") }
                 .badge(pendingCount)
 
             ProfileView()
-                .tabItem { Label("حسابي", systemImage: "person.circle") }
+                .tabItem { Label("Profile", systemImage: "person.circle") }
         }
         .accentColor(Color(hex: "#4f8ef7"))
-        .environment(\.layoutDirection, .rightToLeft)
         .task { await loadBadge() }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("RefreshRequests"))) { _ in
             Task { await loadBadge() }
@@ -199,23 +231,22 @@ struct AdminTabView: View {
     var body: some View {
         TabView {
             AdminDashboardView()
-                .tabItem { Label("الرئيسية", systemImage: "chart.bar.fill") }
+                .tabItem { Label("Home", systemImage: "chart.bar.fill") }
 
             AdminRequestsView()
-                .tabItem { Label("الطلبات", systemImage: "tray.full.fill") }
+                .tabItem { Label("Requests", systemImage: "tray.full.fill") }
                 .badge(pendingCount)
 
-            AdminReportsView()
-                .tabItem { Label("التقارير", systemImage: "chart.line.uptrend.xyaxis") }
-
             EmployeesListView()
-                .tabItem { Label("الموظفون", systemImage: "person.2.fill") }
+                .tabItem { Label("Employees", systemImage: "person.2.fill") }
+
+            AdminReportsView()
+                .tabItem { Label("Reports", systemImage: "chart.line.uptrend.xyaxis") }
 
             NavigationView { AdminManagementView() }
-                .tabItem { Label("إدارة", systemImage: "gearshape.2.fill") }
+                .tabItem { Label("Manage", systemImage: "gearshape.2.fill") }
         }
         .accentColor(Color(hex: "#7b5ea7"))
-        .environment(\.layoutDirection, .rightToLeft)
         .task { await loadBadge() }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("RefreshRequests"))) { _ in
             Task { await loadBadge() }
@@ -240,14 +271,19 @@ struct HRTabView: View {
     var body: some View {
         TabView {
             HRInboxView()
-                .tabItem { Label("المهام", systemImage: "tray.fill") }
+                .tabItem { Label("Tasks", systemImage: "tray.fill") }
                 .badge(pendingCount)
 
+            EmployeesListView()
+                .tabItem { Label("Employees", systemImage: "person.2.fill") }
+
+            AdminReportsView()
+                .tabItem { Label("Reports", systemImage: "chart.line.uptrend.xyaxis") }
+
             ProfileView()
-                .tabItem { Label("حسابي", systemImage: "person.circle") }
+                .tabItem { Label("Profile", systemImage: "person.circle") }
         }
         .accentColor(Color(hex: "#2ecc71"))
-        .environment(\.layoutDirection, .rightToLeft)
         .task { await loadBadge() }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("RefreshRequests"))) { _ in
             Task { await loadBadge() }

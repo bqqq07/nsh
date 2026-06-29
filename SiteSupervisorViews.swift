@@ -196,22 +196,21 @@ struct SiteSupervisorTabView: View {
     var body: some View {
         TabView {
             NavigationView { SiteDashboardView() }
-                .tabItem { Label("الرئيسية", systemImage: "house.fill") }
+                .tabItem { Label("Home", systemImage: "house.fill") }
 
             NavigationView { SiteSupervisorsListView() }
-                .tabItem { Label("مشرفوني", systemImage: "person.3.fill") }
+                .tabItem { Label("Supervisors", systemImage: "person.3.fill") }
 
             NavigationView { SiteAttendanceView() }
-                .tabItem { Label("الحضور", systemImage: "calendar.badge.checkmark") }
+                .tabItem { Label("Attendance", systemImage: "calendar.badge.checkmark") }
 
             NavigationView { SiteReportsView() }
-                .tabItem { Label("التقارير", systemImage: "chart.bar.fill") }
+                .tabItem { Label("Reports", systemImage: "chart.bar.fill") }
 
             SiteMoreView(showHSE: false)
-                .tabItem { Label("المزيد", systemImage: "ellipsis.circle.fill") }
+                .tabItem { Label("More", systemImage: "ellipsis.circle.fill") }
         }
         .accentColor(Color(hex: "#6C63FF"))
-        .environment(\.layoutDirection, .rightToLeft)
     }
 }
 
@@ -221,20 +220,20 @@ struct SiteMoreView: View {
     var body: some View {
         NavigationView {
             List {
-                Section {
-                    NavigationLink(destination: SiteTbtAllView()) {
-                        Label("جلسات TBT", systemImage: "person.2.badge.gearshape")
-                            .foregroundColor(.blue)
-                    }
+                Section(header: Text("Operations")) {
                     NavigationLink(destination: SiteRequestsView()) {
-                        Label("الطلبات", systemImage: "tray.full.fill")
+                        Label("Requests", systemImage: "tray.full.fill")
                     }
                     NavigationLink(destination: SiteUnassignedView()) {
-                        Label("الموظفون المعلقون", systemImage: "person.fill.questionmark")
+                        Label("Unassigned Employees", systemImage: "person.fill.questionmark")
+                    }
+                    NavigationLink(destination: SiteTbtAllView()) {
+                        Label("TBT Sessions", systemImage: "person.2.badge.gearshape")
+                            .foregroundColor(.blue)
                     }
                 }
                 if showHSE {
-                    Section {
+                    Section(header: Text("HSE")) {
                         NavigationLink(destination: HSEDashboardView()) {
                             Label("HSE Dashboard", systemImage: "shield.checkered")
                                 .foregroundColor(.green)
@@ -243,13 +242,12 @@ struct SiteMoreView: View {
                 }
                 Section {
                     NavigationLink(destination: ProfileView()) {
-                        Label("حسابي", systemImage: "person.circle")
+                        Label("Profile", systemImage: "person.circle")
                     }
                 }
             }
-            .navigationTitle("المزيد")
+            .navigationTitle("More")
         }
-        .environment(\.layoutDirection, .rightToLeft)
     }
 }
 

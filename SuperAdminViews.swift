@@ -97,19 +97,15 @@ struct SuperAdminTabView: View {
     var body: some View {
         TabView {
             NavigationView { SADashboardView() }
-                .tabItem { Label("لوحة التحكم", systemImage: "gauge.with.dots.needle.50percent") }
+                .tabItem { Label("Dashboard", systemImage: "gauge.with.dots.needle.50percent") }
 
             NavigationView { SACompaniesView() }
-                .tabItem { Label("الشركات", systemImage: "building.2.fill") }
-
-            NavigationView { SANewCompanyView() }
-                .tabItem { Label("شركة جديدة", systemImage: "plus.square.fill") }
+                .tabItem { Label("Companies", systemImage: "building.2.fill") }
 
             NavigationView { SAProfileView() }
-                .tabItem { Label("حسابي", systemImage: "person.circle") }
+                .tabItem { Label("Profile", systemImage: "person.circle") }
         }
         .accentColor(Color(hex: "#7c3aed"))
-        .environment(\.layoutDirection, .rightToLeft)
     }
 }
 
@@ -236,6 +232,7 @@ struct SACompaniesView: View {
     @State private var companies: [SACompany] = []
     @State private var search = ""
     @State private var loading = true
+    @State private var showNew = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -273,7 +270,16 @@ struct SACompaniesView: View {
                 .listStyle(.plain)
             }
         }
-        .navigationTitle("الشركات (\(companies.count))")
+        .navigationTitle("Companies (\(companies.count))")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { showNew = true } label: { Image(systemName: "plus") }
+            }
+        }
+        .sheet(isPresented: $showNew) {
+            SANewCompanyView()
+                .onDisappear { Task { await load() } }
+        }
         .task { await load() }
         .refreshable { await load() }
     }

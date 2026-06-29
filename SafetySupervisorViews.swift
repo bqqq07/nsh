@@ -12,14 +12,11 @@ struct SafetySupervisorTabView: View {
                 .tabItem { Label("Officers", systemImage: "person.3.fill") }
 
             NavigationView { SafetySupMonitorView() }
-                .tabItem { Label("Activity", systemImage: "list.bullet.clipboard.fill") }
+                .tabItem { Label("Monitor", systemImage: "list.bullet.clipboard.fill") }
 
             MyRequestsView()
                 .tabItem { Label("Requests", systemImage: "tray.fill") }
                 .badge(pendingRequests)
-
-            NavigationView { UserLocationView() }
-                .tabItem { Label("Location", systemImage: "location.fill") }
 
             ProfileView()
                 .tabItem { Label("Profile", systemImage: "person.circle") }
