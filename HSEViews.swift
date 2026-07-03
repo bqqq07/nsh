@@ -474,9 +474,9 @@ struct HSEObservationsView: View {
                             HSEEditObservationView(obs: o) { Task { page = 1; await load() } }
                         }
                     }
-                    .task { await load() }
             }
         }
+        .task { await load() }
     }
 
     private func load() async {
@@ -913,9 +913,9 @@ struct HSEJsoView: View {
                     if let j = editJso { HSEEditJsoView(jso: j) { Task { page = 1; await load() } } }
                 }
                 .sheet(item: $selJso) { HSEJsoDetailSheet(jso: $0) }
-                .task { await load() }
             }
         }
+        .task { await load() }
     }
 
     private func load() async {
@@ -1085,9 +1085,9 @@ struct HSETbtView: View {
                     }
                 }
                 .refreshable { page = 1; await load() }
-                .task { await load() }
             }
         }
+        .task { await load() }
     }
 
     private func load() async {
@@ -1445,9 +1445,9 @@ struct HSENearMissView: View {
                     }
                 }
                 .refreshable { page = 1; await load() }
-                .task { await load() }
             }
         }
+        .task { await load() }
     }
 
     private func load() async {
