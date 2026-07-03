@@ -1587,48 +1587,46 @@ struct HSEBbsView: View {
     @State private var showAlert    = false
 
     var body: some View {
-        NavigationView {
-            Form {
-                if isLoading {
-                    Section { ProgressView() }
-                } else {
-                    Section(header: Text("سجل BBS اليوم")) {
-                        if let rec = todayRecord {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
-                                VStack(alignment: .leading) {
-                                    Text("تم التسجيل اليوم").font(.caption).foregroundColor(.secondary)
-                                    Text("\(rec.card_count) بطاقة BBS").font(.headline)
-                                    if !rec.notes.isEmpty {
-                                        Text(rec.notes).font(.caption).foregroundColor(.secondary)
-                                    }
+        Form {
+            if isLoading {
+                Section { ProgressView() }
+            } else {
+                Section(header: Text("سجل BBS اليوم")) {
+                    if let rec = todayRecord {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                            VStack(alignment: .leading) {
+                                Text("تم التسجيل اليوم").font(.caption).foregroundColor(.secondary)
+                                Text("\(rec.card_count) بطاقة BBS").font(.headline)
+                                if !rec.notes.isEmpty {
+                                    Text(rec.notes).font(.caption).foregroundColor(.secondary)
                                 }
                             }
                         }
-                        TextField("عدد البطاقات *", text: $cardCount).keyboardType(.numberPad)
-                        TextField("ملاحظات (اختياري)", text: $notes)
-                        Button(todayRecord == nil ? "حفظ" : "تحديث") { Task { await save() } }
-                            .disabled(saving || cardCount.trimmingCharacters(in: .whitespaces).isEmpty)
-                            .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    if !history.isEmpty {
-                        Section(header: Text("السجل الأخير")) {
-                            ForEach(history) { rec in
-                                HStack {
-                                    Text(formatDate(rec.date)).font(.subheadline)
-                                    Spacer()
-                                    Text("\(rec.card_count) بطاقة").font(.subheadline).bold()
-                                }
+                    TextField("عدد البطاقات *", text: $cardCount).keyboardType(.numberPad)
+                    TextField("ملاحظات (اختياري)", text: $notes)
+                    Button(todayRecord == nil ? "حفظ" : "تحديث") { Task { await save() } }
+                        .disabled(saving || cardCount.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                if !history.isEmpty {
+                    Section(header: Text("السجل الأخير")) {
+                        ForEach(history) { rec in
+                            HStack {
+                                Text(formatDate(rec.date)).font(.subheadline)
+                                Spacer()
+                                Text("\(rec.card_count) بطاقة").font(.subheadline).bold()
                             }
                         }
                     }
                 }
             }
-            .navigationTitle("BBS اليومي")
-            .task { await load() }
-            .alert("", isPresented: $showAlert) { Button("حسناً") {} } message: { Text(message) }
-            .refreshable { await load() }
         }
+        .navigationTitle("BBS اليومي")
+        .task { await load() }
+        .alert("", isPresented: $showAlert) { Button("حسناً") {} } message: { Text(message) }
+        .refreshable { await load() }
     }
 
     private func load() async {
@@ -4026,73 +4024,72 @@ struct HSEManpowerView: View {
     @State private var showAlert  = false
 
     var body: some View {
-        NavigationView {
-            Form {
-                if isLoading {
-                    Section { ProgressView() }
-                } else {
-                    if let ex = existing {
-                        Section(header: Label("سجّل اليوم", systemImage: "checkmark.circle.fill")) {
-                            HStack {
-                                Image(systemName: "person.3.fill").foregroundColor(.blue)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("\(ex.total_count) عامل").font(.headline)
-                                    if !ex.location.isEmpty {
-                                        Text(ex.location).font(.caption).foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Section(header: Text(existing == nil ? "إدخال اليوم" : "تحديث")) {
+        Form {
+            if isLoading {
+                Section { ProgressView() }
+            } else {
+                if let ex = existing {
+                    Section(header: Label("سجّل اليوم", systemImage: "checkmark.circle.fill")) {
                         HStack {
-                            Text("إجمالي العمال")
-                            Spacer()
-                            TextField("0", text: $totalCount)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                                .frame(width: 80)
-                        }
-                        HSELocationField(label: "الموقع", value: $location, suggestions: locations)
-                        TextField("ملاحظات", text: $notes)
-                    }
-
-                    Section {
-                        Button(action: { Task { await save() } }) {
-                            if saving { ProgressView() }
-                            else { Text(existing == nil ? "حفظ" : "تحديث")
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                    .foregroundColor(.white) }
-                        }
-                        .listRowBackground(Color.blue)
-                        .disabled(saving || totalCount.isEmpty)
-                    }
-
-                    if !history.isEmpty {
-                        Section(header: Text("السجل الأخير")) {
-                            ForEach(history) { rec in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(formatDate(rec.date)).font(.subheadline)
-                                        if !rec.location.isEmpty {
-                                            Text(rec.location).font(.caption).foregroundColor(.secondary)
-                                        }
-                                    }
-                                    Spacer()
-                                    Text("\(rec.total_count)")
-                                        .font(.title3).fontWeight(.bold).foregroundColor(.blue)
+                            Image(systemName: "person.3.fill").foregroundColor(.blue)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(ex.total_count) عامل").font(.headline)
+                                if !ex.location.isEmpty {
+                                    Text(ex.location).font(.caption).foregroundColor(.secondary)
                                 }
                             }
                         }
                     }
                 }
+
+                Section(header: Text(existing == nil ? "إدخال اليوم" : "تحديث")) {
+                    HStack {
+                        Text("إجمالي العمال")
+                        Spacer()
+                        TextField("0", text: $totalCount)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                    }
+                    HSELocationField(label: "الموقع", value: $location, suggestions: locations)
+                    TextField("ملاحظات", text: $notes)
+                }
+
+                Section {
+                    Button(action: { Task { await save() } }) {
+                        if saving { ProgressView() }
+                        else {
+                            Text(existing == nil ? "حفظ" : "تحديث")
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .listRowBackground(Color.blue)
+                    .disabled(saving || totalCount.isEmpty)
+                }
+
+                if !history.isEmpty {
+                    Section(header: Text("السجل الأخير")) {
+                        ForEach(history) { rec in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(formatDate(rec.date)).font(.subheadline)
+                                    if !rec.location.isEmpty {
+                                        Text(rec.location).font(.caption).foregroundColor(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Text("\(rec.total_count)")
+                                    .font(.title3).fontWeight(.bold).foregroundColor(.blue)
+                            }
+                        }
+                    }
+                }
             }
-            .navigationTitle("Man Power")
-            .task { await load() }
-            .alert("", isPresented: $showAlert) { Button("حسناً") {} } message: { Text(message) }
         }
-        .environment(\.layoutDirection, .rightToLeft)
+        .navigationTitle("Man Power")
+        .task { await load() }
+        .alert("", isPresented: $showAlert) { Button("حسناً") {} } message: { Text(message) }
     }
 
     private func load() async {
@@ -4150,96 +4147,91 @@ struct HSEInspectionView: View {
     }
 
     var body: some View {
-        NavigationView {
-            Form {
-                if isLoading {
-                    Section { ProgressView() }
-                } else {
-                    // Score preview
-                    Section {
-                        HStack {
-                            Text("النتيجة").font(.headline)
-                            Spacer()
-                            Text(String(format: "%.0f%%", score))
-                                .font(.title2).fontWeight(.bold)
-                                .foregroundColor(score >= 80 ? .green : score >= 60 ? .orange : .red)
-                        }
+        Form {
+            if isLoading {
+                Section { ProgressView() }
+            } else {
+                Section {
+                    HStack {
+                        Text("النتيجة").font(.headline)
+                        Spacer()
+                        Text(String(format: "%.0f%%", score))
+                            .font(.title2).fontWeight(.bold)
+                            .foregroundColor(score >= 80 ? .green : score >= 60 ? .orange : .red)
                     }
+                }
 
-                    Section(header: Text("الموقع والملاحظات")) {
-                        HSELocationField(label: "الموقع", value: $location, suggestions: locations)
-                        TextField("ملاحظات عامة", text: $notes)
-                    }
+                Section(header: Text("الموقع والملاحظات")) {
+                    HSELocationField(label: "الموقع", value: $location, suggestions: locations)
+                    TextField("ملاحظات عامة", text: $notes)
+                }
 
-                    Section(header: Text("بنود الفحص (\(checks.filter(\.ok).count)/\(checks.count))")) {
-                        ForEach(checks.indices, id: \.self) { idx in
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(alignment: .top) {
-                                    Button {
-                                        checks[idx].ok.toggle()
-                                    } label: {
-                                        Image(systemName: checks[idx].ok
-                                              ? "checkmark.circle.fill" : "circle")
-                                            .foregroundColor(checks[idx].ok ? .green : .gray)
-                                            .font(.title3)
-                                    }
-                                    .buttonStyle(BorderlessButtonStyle())
-                                    Text(checks[idx].item)
-                                        .font(.subheadline)
-                                        .fixedSize(horizontal: false, vertical: true)
+                Section(header: Text("بنود الفحص (\(checks.filter(\.ok).count)/\(checks.count))")) {
+                    ForEach(checks.indices, id: \.self) { idx in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .top) {
+                                Button { checks[idx].ok.toggle() } label: {
+                                    Image(systemName: checks[idx].ok ? "checkmark.circle.fill" : "circle")
+                                        .foregroundColor(checks[idx].ok ? .green : .gray)
+                                        .font(.title3)
                                 }
-                                if !checks[idx].ok {
-                                    TextField("ملاحظة...", text: Binding(
-                                        get: { checks[idx].note },
-                                        set: { checks[idx].note = $0 }
-                                    ))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .padding(.leading, 32)
-                                }
+                                .buttonStyle(BorderlessButtonStyle())
+                                Text(checks[idx].item)
+                                    .font(.subheadline)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            .padding(.vertical, 2)
+                            if !checks[idx].ok {
+                                TextField("ملاحظة...", text: Binding(
+                                    get: { checks[idx].note },
+                                    set: { checks[idx].note = $0 }
+                                ))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 32)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
+                Section {
+                    Button(action: { Task { await saveInspection() } }) {
+                        if saving { ProgressView() }
+                        else {
+                            Text(existing == nil ? "حفظ الجولة" : "تحديث الجولة")
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .foregroundColor(.white)
                         }
                     }
+                    .listRowBackground(Color(score >= 80 ? .green : score >= 60 ? .orange : .red))
+                    .disabled(saving)
+                }
 
-                    Section {
-                        Button(action: { Task { await saveInspection() } }) {
-                            if saving { ProgressView() }
-                            else { Text(existing == nil ? "حفظ الجولة" : "تحديث الجولة")
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                    .foregroundColor(.white) }
-                        }
-                        .listRowBackground(Color(score >= 80 ? .green : score >= 60 ? .orange : .red))
-                        .disabled(saving)
-                    }
-
-                    if !history.isEmpty {
-                        Section(header: Text("السجل الأخير")) {
-                            ForEach(history) { rec in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(formatDate(rec.date)).font(.subheadline)
-                                        if !rec.location.isEmpty {
-                                            Text(rec.location).font(.caption).foregroundColor(.secondary)
-                                        }
+                if !history.isEmpty {
+                    Section(header: Text("السجل الأخير")) {
+                        ForEach(history) { rec in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(formatDate(rec.date)).font(.subheadline)
+                                    if !rec.location.isEmpty {
+                                        Text(rec.location).font(.caption).foregroundColor(.secondary)
                                     }
-                                    Spacer()
-                                    if let s = rec.overall_score {
-                                        Text(String(format: "%.0f%%", s))
-                                            .fontWeight(.bold)
-                                            .foregroundColor(s >= 80 ? .green : s >= 60 ? .orange : .red)
-                                    }
+                                }
+                                Spacer()
+                                if let s = rec.overall_score {
+                                    Text(String(format: "%.0f%%", s))
+                                        .fontWeight(.bold)
+                                        .foregroundColor(s >= 80 ? .green : s >= 60 ? .orange : .red)
                                 }
                             }
                         }
                     }
                 }
             }
-            .navigationTitle("Inspection Checklist")
-            .task { await load() }
-            .alert("", isPresented: $showAlert) { Button("حسناً") {} } message: { Text(message) }
         }
-        .environment(\.layoutDirection, .rightToLeft)
+        .navigationTitle("Inspection Checklist")
+        .task { await load() }
+        .alert("", isPresented: $showAlert) { Button("حسناً") {} } message: { Text(message) }
     }
 
     private let defaultItems = [
@@ -4257,22 +4249,20 @@ struct HSEInspectionView: View {
 
     private func load() async {
         isLoading = true
-        do {
-            async let e = NetworkManager.shared.hseInspectionToday()
-            async let h = NetworkManager.shared.hseInspectionHistory()
-            async let l = NetworkManager.shared.hseLocations()
-            let (ex, hist, locs) = try await (e, h, l)
-            existing  = ex
-            history   = hist
-            locations = locs
-            if let ex = ex, let cl = ex.checklist, !cl.isEmpty {
-                checks   = cl.map { (item: $0.item, ok: $0.ok, note: $0.note) }
-                location = ex.location
-                notes    = ex.notes
-            } else {
-                checks = defaultItems.map { (item: $0, ok: false, note: "") }
-            }
-        } catch {}
+        async let e = try? NetworkManager.shared.hseInspectionToday()
+        async let h = try? NetworkManager.shared.hseInspectionHistory()
+        async let l = try? NetworkManager.shared.hseLocations()
+        let (ex, hist, locs) = await (e, h, l)
+        existing  = ex
+        history   = hist ?? []
+        locations = locs ?? []
+        if let ex = ex, let cl = ex.checklist, !cl.isEmpty {
+            checks   = cl.map { (item: $0.item, ok: $0.ok, note: $0.note) }
+            location = ex.location
+            notes    = ex.notes
+        } else {
+            checks = defaultItems.map { (item: $0, ok: false, note: "") }
+        }
         isLoading = false
     }
 

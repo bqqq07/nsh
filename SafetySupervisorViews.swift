@@ -398,9 +398,28 @@ struct OfficerStatRow: View {
 //  MARK: - Weekly Report View
 // ═══════════════════════════════════════════════════
 struct SafetySupWeeklyReportView: View {
-    @State private var report: HseWeeklyReport? = nil
+    @State private var report:    HseWeeklyReport? = nil
     @State private var isLoading  = true
     @State private var errorMsg   = ""
+    @State private var weekOffset = 0
+
+    private var weekStartDate: Date {
+        let cal     = Calendar(identifier: .gregorian)
+        let today   = Date()
+        let weekday = cal.component(.weekday, from: today) - 1
+        let thisSun = cal.date(byAdding: .day, value: -weekday, to: today)!
+        return cal.date(byAdding: .day, value: weekOffset * 7, to: thisSun)!
+    }
+    private var weekLabel: String {
+        let cal = Calendar(identifier: .gregorian)
+        let end = cal.date(byAdding: .day, value: 6, to: weekStartDate)!
+        let f = DateFormatter(); f.dateFormat = "d MMM"; f.locale = Locale(identifier: "en")
+        return "\(f.string(from: weekStartDate)) — \(f.string(from: end))"
+    }
+    private var weekStartISO: String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: weekStartDate)
+    }
 
     var body: some View {
         Group {
@@ -416,8 +435,23 @@ struct SafetySupWeeklyReportView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let rep = report {
                 List {
-                    Section(header: Text("Week: \(rep.week_start) → \(rep.week_end)")) {
-                        EmptyView()
+                    Section {
+                        HStack {
+                            Button { weekOffset -= 1; Task { await load() } } label: {
+                                Image(systemName: "chevron.left").font(.title3).padding(8)
+                            }
+                            Spacer()
+                            VStack(spacing: 2) {
+                                Text("Week").font(.caption).foregroundColor(.secondary)
+                                Text(weekLabel).font(.subheadline).bold()
+                            }
+                            Spacer()
+                            Button { if weekOffset < 0 { weekOffset += 1; Task { await load() } } } label: {
+                                Image(systemName: "chevron.right").font(.title3).padding(8)
+                                    .foregroundColor(weekOffset < 0 ? .primary : .secondary)
+                            }
+                            .disabled(weekOffset >= 0)
+                        }
                     }
                     if rep.rows.isEmpty {
                         Section { Text("No data for this week.").foregroundColor(.secondary) }
@@ -503,7 +537,7 @@ struct SafetySupWeeklyReportView: View {
 
     private func load() async {
         isLoading = true; errorMsg = ""
-        do { report = try await NetworkManager.shared.getHseWeeklyReport() }
+        do { report = try await NetworkManager.shared.getHseWeeklyReport(weekStart: weekStartISO) }
         catch { errorMsg = error.localizedDescription }
         isLoading = false
     }
