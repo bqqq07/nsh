@@ -148,11 +148,6 @@ struct AdminManagementView: View {
                     Label("Send Notification", systemImage: "bell.badge.fill")
                 }
             }
-            Section(header: Text("HSE")) {
-                NavigationLink(destination: AdminHseAccessView()) {
-                    Label("HSE Supervisor Access", systemImage: "shield.lefthalf.filled")
-                }
-            }
             Section {
                 NavigationLink(destination: ProfileView()) {
                     Label("Profile", systemImage: "person.circle")

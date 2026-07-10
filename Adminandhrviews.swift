@@ -393,20 +393,29 @@ struct EmpSummarySheet: View {
                         // إحصائيات الحضور
                         HStack(spacing: 12) {
                             SummaryStatCard(title: "أيام الحضور", value: "\(summary.present)", color: Color(hex: "#2ecc71"))
-                            SummaryStatCard(title: "أيام الغياب", value: "\(summary.absent)",  color: Color(hex: "#e74c3c"))
-                            SummaryStatCard(title: "إجمالي الأيام", value: "\(summary.total_days)", color: Color(hex: "#4f8ef7"))
+                            SummaryStatCard(title: "غياب الشهر", value: "\(summary.absent)",  color: Color(hex: "#e74c3c"))
+                            SummaryStatCard(title: "غياب كلي", value: "\(summary.absent_all ?? summary.absent)", color: Color(hex: "#4f8ef7"))
                         }
                         .padding(.horizontal)
 
-                        // متوسط التقييم
+                        // متوسط التقييم (كل الفترة)
                         VStack(spacing: 8) {
-                            Text("متوسط التقييم (آخر 8 أسابيع)").font(.caption).foregroundColor(.secondary)
-                            if let avg = summary.avg_score_8w {
+                            HStack(spacing: 6) {
+                                Text("متوسط التقييم (كل الفترة)").font(.caption).foregroundColor(.secondary)
+                                if let trend = summary.trend {
+                                    if trend == "up" {
+                                        Image(systemName: "arrow.up.right").foregroundColor(.green)
+                                    } else if trend == "down" {
+                                        Image(systemName: "arrow.down.right").foregroundColor(.red)
+                                    }
+                                }
+                            }
+                            if let avg = summary.avg_score_all {
                                 Text(String(format: "%.1f", avg))
                                     .font(.system(size: 48, weight: .bold, design: .rounded))
                                     .foregroundColor(scoreColor(avg))
                                 Text(scoreBand(avg)).font(.subheadline.bold()).foregroundColor(scoreColor(avg))
-                                Text("من \(summary.eval_count_8w) تقييم").font(.caption).foregroundColor(.secondary)
+                                Text("من \(summary.eval_count_all ?? 0) تقييم").font(.caption).foregroundColor(.secondary)
                             } else {
                                 Text("لا توجد تقييمات").foregroundColor(.secondary)
                             }
@@ -416,7 +425,16 @@ struct EmpSummarySheet: View {
                         .shadow(color: .black.opacity(0.05), radius: 6)
                         .padding(.horizontal)
 
-                        Text("آخر 90 يوم").font(.caption).foregroundColor(.secondary)
+                        // متوسط آخر 8 أسابيع (مرجعي)
+                        VStack(spacing: 4) {
+                            Text("متوسط آخر 8 أسابيع").font(.caption2).foregroundColor(.secondary)
+                            if let avg8 = summary.avg_score_8w {
+                                Text(String(format: "%.1f", avg8)).font(.headline).foregroundColor(scoreColor(avg8))
+                            } else {
+                                Text("—").font(.headline).foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.bottom, 4)
                     }
                     .padding(.top)
                 }
@@ -469,6 +487,7 @@ struct DecisionSheet: View {
     @State private var errorMsg      = ""
     @State private var showRejectConfirm = false
     @State private var showAttachment    = false
+    @State private var empSummary: (Employee, EmployeeSummary)? = nil
 
     var body: some View {
         NavigationView {
@@ -476,7 +495,13 @@ struct DecisionSheet: View {
                 Form {
                     Section("تفاصيل الطلب") {
                         LabeledRow(label: "النوع",   value: request.typeArabic)
-                        LabeledRow(label: "الموظف",  value: request.employee?.name ?? "—")
+                        Button {
+                            Task { await loadEmpSummary() }
+                        } label: {
+                            LabeledRow(label: "الموظف", value: (request.employee?.name ?? "—") + "  ›")
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(request.employee?.id == nil)
                         LabeledRow(label: "المشرف",  value: request.supervisor?.name ?? "—")
                         if let sd = request.start_date { LabeledRow(label: "من",     value: sd) }
                         if let ed = request.end_date   { LabeledRow(label: "إلى",    value: ed) }
@@ -548,7 +573,25 @@ struct DecisionSheet: View {
                 let token = UserDefaults.standard.string(forKey: "auth_token") ?? ""
                 SafariView(url: URL(string: BASE_URL + "/api/requests/\(request.id)/attachment?token=\(token)")!)
             }
+            .sheet(isPresented: Binding(get: { empSummary != nil }, set: { if !$0 { empSummary = nil } })) {
+                if let (emp, summary) = empSummary {
+                    EmpSummarySheet(employee: emp, summary: summary)
+                }
+            }
         }
+    }
+
+    private func loadEmpSummary() async {
+        guard let empId   = request.employee?.id,
+              let empName = request.employee?.name,
+              let empNum  = request.employee?.emp_number else { return }
+        let emp = Employee(id: empId, name: empName, emp_number: empNum,
+                           department: request.employee?.department, site: nil,
+                           status: "active", resigned_at: nil)
+        do {
+            let result = try await NetworkManager.shared.getEmployeeSummary(empId: empId)
+            await MainActor.run { empSummary = (emp, result) }
+        } catch { }
     }
 
     private func decide(_ decision: String) async {
@@ -853,6 +896,8 @@ struct HRTaskCard: View {
     let onRefresh: () -> Void
     @State private var showPDF = false
     @State private var showSetReason = false
+    @State private var showAttachment = false
+    @State private var attachmentViewed = false
     var isPending: Bool { task.status == "pending" }
 
     var body: some View {
@@ -885,6 +930,26 @@ struct HRTaskCard: View {
             }
             if let sd = task.request?.start_date, let ed = task.request?.end_date {
                 Text("\(sd) — \(ed)").font(.caption).foregroundColor(.secondary)
+            }
+
+            // مرفق السكليف — يجب فتحه قبل السماح بـ"تم التنفيذ"
+            if task.type == "sick", task.has_attachment == true, let attUrl = task.attachment_url {
+                Button {
+                    attachmentViewed = true
+                    showAttachment = true
+                } label: {
+                    HStack {
+                        Image(systemName: "doc.fill")
+                        Text("عرض التقرير الطبي المرفق").font(.caption.bold())
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+                    .background(Color(hex: "#2563eb").opacity(0.1))
+                    .foregroundColor(Color(hex: "#2563eb")).cornerRadius(10)
+                }
+                .sheet(isPresented: $showAttachment) {
+                    let token = UserDefaults.standard.string(forKey: "auth_token") ?? ""
+                    SafariView(url: URL(string: BASE_URL + attUrl + "?token=\(token)")!)
+                }
             }
 
             // أزرار الإنذار
@@ -930,8 +995,10 @@ struct HRTaskCard: View {
             }
 
             // زر "تم التنفيذ" — للإنذار: يظهر فقط بعد وصول PDF (أي بعد توقيع الموظف)
+            //                    للسكليف: يظهر فقط بعد فتح المرفق الطبي (إن وُجد)
             //                    لباقي الأنواع: يظهر مباشرة
-            let canApply = task.type != "warning" || task.warning_pdf_url != nil
+            let sickNeedsReview = task.type == "sick" && task.has_attachment == true && !attachmentViewed
+            let canApply = (task.type != "warning" || task.warning_pdf_url != nil) && !sickNeedsReview
             HStack {
                 if !canApply {
                     // إنذار لم يكتمل بعد — لا يظهر زر تم التنفيذ
@@ -2028,104 +2095,3 @@ struct AdminAddUserView: View {
     }
 }
 
-// ═══════════════════════════════════════════════════
-//  MARK: - Admin HSE Access Management
-// ═══════════════════════════════════════════════════
-struct AdminHseAccessView: View {
-    @State private var entries:   [HseAccessEntry] = []
-    @State private var isLoading  = true
-    @State private var codeInput  = ""
-    @State private var errorMsg   = ""
-    @State private var successMsg = ""
-    @State private var isGranting = false
-
-    var body: some View {
-        List {
-            Section(header: Text("Grant Access")) {
-                HStack {
-                    TextField("Supervisor Code", text: $codeInput)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
-                    Button {
-                        Task { await grant() }
-                    } label: {
-                        if isGranting {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text("Grant")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(codeInput.trimmingCharacters(in: .whitespaces).isEmpty || isGranting)
-                }
-                if !successMsg.isEmpty {
-                    Text(successMsg).font(.caption).foregroundColor(.green)
-                }
-                if !errorMsg.isEmpty {
-                    Text(errorMsg).font(.caption).foregroundColor(.red)
-                }
-            }
-
-            Section(header: Text("Current Access (\(entries.count))")) {
-                if isLoading {
-                    ProgressView()
-                } else if entries.isEmpty {
-                    Text("No HSE supervisors assigned.")
-                        .foregroundColor(.secondary).font(.callout)
-                } else {
-                    ForEach(entries) { entry in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.name).font(.headline)
-                                Text("\(entry.code) · \(entry.role)")
-                                    .font(.caption).foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "shield.fill").foregroundColor(.green)
-                        }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                Task { await revoke(userId: entry.user_id) }
-                            } label: {
-                                Label("Revoke", systemImage: "shield.slash.fill")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("HSE Access")
-        .refreshable { await load() }
-        .task { await load() }
-    }
-
-    private func load() async {
-        isLoading = true
-        entries = (try? await NetworkManager.shared.adminHseAccessList()) ?? []
-        isLoading = false
-    }
-
-    private func grant() async {
-        let code = codeInput.trimmingCharacters(in: .whitespaces)
-        guard !code.isEmpty else { return }
-        isGranting = true; errorMsg = ""; successMsg = ""
-        do {
-            let name = try await NetworkManager.shared.adminHseAccessGrant(code: code)
-            successMsg = "Access granted to \(name)"
-            codeInput = ""
-            await load()
-        } catch {
-            errorMsg = error.localizedDescription
-        }
-        isGranting = false
-    }
-
-    private func revoke(userId: Int) async {
-        do {
-            try await NetworkManager.shared.adminHseAccessRevoke(userId: userId)
-            entries.removeAll { $0.user_id == userId }
-        } catch {
-            errorMsg = error.localizedDescription
-        }
-    }
-}

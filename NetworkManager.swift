@@ -124,11 +124,14 @@ struct HRTask: Codable, Identifiable {
     let official_reason:        String?
     let supervisor_description: String?
     let reason_set:             Bool?
+    let has_attachment:         Bool?
+    let attachment_url:         String?
 
     var statusArabic: String { status == "applied" ? "تم التنفيذ" : "قيد الانتظار" }
     var typeArabic: String {
         switch type {
         case "leave":      return "إجازة"
+        case "sick":       return "سكليف"
         case "secondment": return "إعارة"
         case "permission": return "استئذان"
         case "warning":    return "إنذار"
@@ -192,11 +195,15 @@ struct EvalReport: Codable, Identifiable {
 }
 
 struct EmployeeSummary: Codable {
-    let total_days:    Int
-    let present:       Int
-    let absent:        Int
-    let avg_score_8w:  Double?
-    let eval_count_8w: Int
+    let days_in_month:  Int
+    let present:        Int
+    let absent:         Int
+    let avg_score_8w:   Double?
+    let eval_count_8w:  Int
+    let avg_score_all:  Double?
+    let eval_count_all: Int?
+    let trend:          String?
+    let absent_all:     Int?
 }
 
 struct UserItem: Codable, Identifiable {
@@ -666,15 +673,6 @@ struct HseObservationsResponse: Codable {
     let page:  Int
     let pages: Int
     let total: Int
-}
-
-struct HseAccessEntry: Codable, Identifiable {
-    let user_id:   Int
-    let name:      String
-    let code:      String
-    let role:      String
-    let access_id: Int
-    var id: Int { access_id }
 }
 
 struct HseJsoItem: Codable, Identifiable {
@@ -1679,29 +1677,4 @@ extension NetworkManager {
         return try JSONDecoder().decode(HseObservationItem.self, from: data)
     }
 
-    // ── Admin: HSE Access ─────────────────────────────────────────────
-    func adminHseAccessList() async throws -> [HseAccessEntry] {
-        let (data, _) = try await session.data(for: makeRequest("/api/admin/hse-access"))
-        return try JSONDecoder().decode([HseAccessEntry].self, from: data)
-    }
-
-    func adminHseAccessGrant(code: String) async throws -> String {
-        let body = try JSONSerialization.data(withJSONObject: ["code": code])
-        let req = makeRequest("/api/admin/hse-access/grant", method: "POST", body: body)
-        let (data, resp) = try await session.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
-            throw NSError(domain: "HSE", code: 0, userInfo: [NSLocalizedDescriptionKey: msg ?? "Error"])
-        }
-        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        return json?["name"] as? String ?? code
-    }
-
-    func adminHseAccessRevoke(userId: Int) async throws {
-        let req = makeRequest("/api/admin/hse-access/\(userId)", method: "DELETE")
-        let (_, resp) = try await session.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw NSError(domain: "HSE", code: 0, userInfo: [NSLocalizedDescriptionKey: "Failed to revoke"])
-        }
-    }
 }

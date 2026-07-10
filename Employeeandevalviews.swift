@@ -583,13 +583,23 @@ struct EmployeeReportsView: View {
                 if isLoading {
                     Spacer(); ProgressView(); Spacer()
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 10) {
-                            ForEach(selectedTab == 0 ? weeklyReports : dailyReports) { r in
-                                EvalReportCard(report: r)
+                    let currentReports = selectedTab == 0 ? weeklyReports : dailyReports
+                    if currentReports.isEmpty {
+                        Spacer()
+                        Text("لا توجد تقارير بعد").foregroundColor(.secondary)
+                        Spacer()
+                    } else {
+                        ScrollView {
+                            VStack(spacing: 10) {
+                                AverageReportCard(reports: currentReports)
+                                LazyVStack(spacing: 10) {
+                                    ForEach(currentReports) { r in
+                                        EvalReportCard(report: r)
+                                    }
+                                }
                             }
+                            .padding()
                         }
-                        .padding()
                     }
                 }
             }
@@ -609,6 +619,38 @@ struct EmployeeReportsView: View {
             weeklyReports = []; dailyReports = []
         }
         isLoading = false
+    }
+}
+
+struct AverageReportCard: View {
+    let reports: [EvalReport]
+
+    private var average: Double {
+        guard !reports.isEmpty else { return 0 }
+        let total = reports.reduce(0.0) { $0 + ($1.total ?? 0) }
+        return total / Double(reports.count)
+    }
+
+    private var averageColor: Color {
+        if average >= 90 { return .green }
+        if average >= 80 { return .blue }
+        if average >= 70 { return .orange }
+        return .red
+    }
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("متوسط كل التقارير").font(.caption).foregroundColor(.secondary)
+                Text("من \(reports.count) تقرير").font(.caption2).foregroundColor(.secondary)
+            }
+            Spacer()
+            Text(String(format: "%.1f", average))
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .foregroundColor(averageColor)
+        }
+        .padding().background(Color.white).cornerRadius(14)
+        .shadow(color: .black.opacity(0.05), radius: 5)
     }
 }
 
