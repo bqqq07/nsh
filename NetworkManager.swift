@@ -450,13 +450,6 @@ class NetworkManager {
         _ = try await session.data(for: makeRequest("/api/attendance/save", method: "POST", body: body))
     }
 
-    func saveDailyEval(payload: [String: Any]) async throws -> (Double, String) {
-        let body = try JSONSerialization.data(withJSONObject: payload)
-        let (data, _) = try await session.data(for: makeRequest("/api/daily-eval/save", method: "POST", body: body))
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        return (json?["total"] as? Double ?? 0, json?["band"] as? String ?? "—")
-    }
-
     func saveWeeklyEval(payload: [String: Any]) async throws -> (Double, String) {
         let body = try JSONSerialization.data(withJSONObject: payload)
         let (data, _) = try await session.data(for: makeRequest("/api/weekly-eval/save", method: "POST", body: body))
@@ -482,11 +475,6 @@ class NetworkManager {
         return try JSONDecoder().decode([EvalReport].self, from: data)
     }
 
-    func getDailyReports(date: String) async throws -> [EvalReport] {
-        let (data, _) = try await session.data(for: makeRequest("/api/reports/daily?date=\(date)"))
-        return try JSONDecoder().decode([EvalReport].self, from: data)
-    }
-
     func registerDeviceToken(_ token: String) async throws {
         let body = try JSONSerialization.data(withJSONObject: ["device_token": token])
         _ = try await session.data(for: makeRequest("/api/device-token", method: "POST", body: body))
@@ -499,10 +487,6 @@ extension NetworkManager {
         return try JSONDecoder().decode([EvalReport].self, from: data)
     }
 
-    func getEmployeeDailyReports(empId: Int) async throws -> [EvalReport] {
-        let (data, _) = try await session.data(for: makeRequest("/api/employees/\(empId)/reports/daily"))
-        return try JSONDecoder().decode([EvalReport].self, from: data)
-    }
     func getAdminUsers() async throws -> [UserItem] {
         let (data, _) = try await session.data(for: makeRequest("/api/admin/users"))
         return try JSONDecoder().decode([UserItem].self, from: data)

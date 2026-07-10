@@ -176,7 +176,6 @@ struct AddEmployeeSheet: View {
 // ══════════════════════════════════════════
 struct EmployeeDetailView: View {
     let employee: Employee
-    @State private var showDailyEval  = false
     @State private var showWeeklyEval = false
     @State private var showNewRequest = false
 
@@ -209,9 +208,6 @@ struct EmployeeDetailView: View {
                     .shadow(color: .black.opacity(0.05), radius: 6)
 
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        ActionButton(title: "تقييم يومي", icon: "calendar.badge.plus", color: Color(hex: "#4f8ef7")) {
-                            showDailyEval = true
-                        }
                         ActionButton(title: "تقييم أسبوعي", icon: "chart.bar.fill", color: Color(hex: "#7b5ea7")) {
                             showWeeklyEval = true
                         }
@@ -245,7 +241,6 @@ struct EmployeeDetailView: View {
         }
         .navigationTitle(employee.name)
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showDailyEval)  { DailyEvalFormView(employee: employee) }
         .sheet(isPresented: $showWeeklyEval) { WeeklyEvalFormView(employee: employee) }
         .sheet(isPresented: $showNewRequest) { NewRequestView(preselectedEmployee: employee, onDone: nil) }
     }
@@ -262,112 +257,6 @@ struct ActionButton: View {
             .frame(maxWidth: .infinity).padding(14)
             .background(color.opacity(0.12)).foregroundColor(color).cornerRadius(12)
         }
-    }
-}
-
-// ══════════════════════════════════════════
-//  MARK: - التقييم اليومي
-// ══════════════════════════════════════════
-struct DailyEvalFormView: View {
-    let employee: Employee
-    @Environment(\.dismiss) var dismiss
-
-    @State private var evalDate = Date()
-    @State private var t1_text = ""; @State private var t1_pct: Double = 0
-    @State private var t2_text = ""; @State private var t2_pct: Double = 0
-    @State private var t3_text = ""; @State private var t3_pct: Double = 0
-    @State private var t4_text = ""; @State private var t4_pct: Double = 0
-    @State private var p_punctuality = 0;    @State private var p_quality = 0
-    @State private var p_productivity = 0;   @State private var p_communication = 0
-    @State private var p_problemsolving = 0; @State private var p_compliance = 0
-    @State private var strengths = ""; @State private var improvements = ""; @State private var training = ""
-    @State private var isSaving = false; @State private var errorMsg = ""; @State private var successMsg = ""
-
-    var body: some View {
-        NavigationView {
-            Form {
-                Section("التاريخ") {
-                    DatePicker("تاريخ التقييم", selection: $evalDate, displayedComponents: .date)
-                        .environment(\.locale, Locale(identifier: "ar_SA"))
-                }
-                Section("الأهداف (40 درجة)") {
-                    TargetRow(label: "الهدف 1", text: $t1_text, percent: $t1_pct)
-                    TargetRow(label: "الهدف 2", text: $t2_text, percent: $t2_pct)
-                    TargetRow(label: "الهدف 3", text: $t3_text, percent: $t3_pct)
-                    TargetRow(label: "الهدف 4", text: $t4_text, percent: $t4_pct)
-                }
-                Section("الأداء (60 درجة)") {
-                    RatingRow(label: "الانضباط",    value: $p_punctuality)
-                    RatingRow(label: "الجودة",      value: $p_quality)
-                    RatingRow(label: "الإنتاجية",   value: $p_productivity)
-                    RatingRow(label: "التواصل",     value: $p_communication)
-                    RatingRow(label: "حل المشكلات", value: $p_problemsolving)
-                    RatingRow(label: "الامتثال",    value: $p_compliance)
-                }
-                Section("ملاحظات") {
-                    TextField("نقاط القوة",      text: $strengths,    axis: .vertical).lineLimit(2...4)
-                    TextField("نقاط التحسين",    text: $improvements, axis: .vertical).lineLimit(2...4)
-                    TextField("التدريب المطلوب", text: $training,     axis: .vertical).lineLimit(2...4)
-                }
-                if !errorMsg.isEmpty   { Text(errorMsg).foregroundColor(.red).font(.caption) }
-                if !successMsg.isEmpty { Text(successMsg).foregroundColor(.green).font(.caption) }
-            }
-            .navigationTitle("تقييم يومي — \(employee.name)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading)  { Button("إلغاء") { dismiss() } }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("حفظ") { Task { await save() } }.disabled(isSaving)
-                }
-            }
-        }
-    }
-
-    private func save() async {
-        isSaving = true; errorMsg = ""; successMsg = ""
-        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
-        let body: [String: Any] = [
-            "employee_id": employee.id,
-            "eval_date": df.string(from: evalDate),
-            "t1_text": t1_text, "t1_percent": t1_pct,
-            "t2_text": t2_text, "t2_percent": t2_pct,
-            "t3_text": t3_text, "t3_percent": t3_pct,
-            "t4_text": t4_text, "t4_percent": t4_pct,
-            "p_punctuality": p_punctuality,   "p_quality": p_quality,
-            "p_productivity": p_productivity, "p_communication": p_communication,
-            "p_problemsolving": p_problemsolving, "p_compliance": p_compliance,
-            "strengths": strengths, "improvements": improvements, "training_needed": training,
-        ]
-        if OfflineQueue.shared.isOnline {
-            do {
-                let req = NetworkManager.shared.makeRequest("/api/daily-eval/save", method: "POST",
-                              body: try JSONSerialization.data(withJSONObject: body))
-                let (data, response) = try await URLSession.shared.data(for: req)
-                if (response as? HTTPURLResponse)?.statusCode == 201 {
-                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                       let total = json["total"] as? Double, let band = json["band"] as? String {
-                        successMsg = "تم الحفظ ✓  المجموع: \(Int(total)) — \(band)"
-                    } else { successMsg = "تم الحفظ ✓" }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { dismiss() }
-                } else if (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String == "Evaluation already exists for this date" {
-                    errorMsg = "يوجد تقييم لهذا اليوم مسبقاً"
-                } else {
-                    // فشل — احفظ offline
-                    OfflineQueue.shared.enqueue(type: .dailyEval, endpoint: "/api/daily-eval/save", payload: body)
-                    successMsg = "حُفظ محلياً ⏳ — سيُرسل عند الاتصال"
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { dismiss() }
-                }
-            } catch {
-                OfflineQueue.shared.enqueue(type: .dailyEval, endpoint: "/api/daily-eval/save", payload: body)
-                successMsg = "حُفظ محلياً ⏳ — سيُرسل عند الاتصال"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { dismiss() }
-            }
-        } else {
-            OfflineQueue.shared.enqueue(type: .dailyEval, endpoint: "/api/daily-eval/save", payload: body)
-            successMsg = "حُفظ محلياً ⏳ — سيُرسل عند الاتصال"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { dismiss() }
-        }
-        isSaving = false
     }
 }
 
@@ -566,40 +455,29 @@ struct WeeklyEvalFormView: View {
 struct EmployeeReportsView: View {
     let employee: Employee
     @State private var weeklyReports: [EvalReport] = []
-    @State private var dailyReports:  [EvalReport] = []
     @State private var isLoading  = true
-    @State private var selectedTab = 0
 
     var body: some View {
         ZStack {
             Color(hex: "#f0f4ff").ignoresSafeArea()
             VStack {
-                Picker("", selection: $selectedTab) {
-                    Text("أسبوعي").tag(0)
-                    Text("يومي").tag(1)
-                }
-                .pickerStyle(.segmented).padding()
-
                 if isLoading {
                     Spacer(); ProgressView(); Spacer()
+                } else if weeklyReports.isEmpty {
+                    Spacer()
+                    Text("لا توجد تقارير بعد").foregroundColor(.secondary)
+                    Spacer()
                 } else {
-                    let currentReports = selectedTab == 0 ? weeklyReports : dailyReports
-                    if currentReports.isEmpty {
-                        Spacer()
-                        Text("لا توجد تقارير بعد").foregroundColor(.secondary)
-                        Spacer()
-                    } else {
-                        ScrollView {
-                            VStack(spacing: 10) {
-                                AverageReportCard(reports: currentReports)
-                                LazyVStack(spacing: 10) {
-                                    ForEach(currentReports) { r in
-                                        EvalReportCard(report: r)
-                                    }
+                    ScrollView {
+                        VStack(spacing: 10) {
+                            AverageReportCard(reports: weeklyReports)
+                            LazyVStack(spacing: 10) {
+                                ForEach(weeklyReports) { r in
+                                    EvalReportCard(report: r)
                                 }
                             }
-                            .padding()
                         }
+                        .padding()
                     }
                 }
             }
@@ -611,12 +489,9 @@ struct EmployeeReportsView: View {
     private func load() async {
         isLoading = true
         do {
-            async let weekly = NetworkManager.shared.getEmployeeWeeklyReports(empId: employee.id)
-            async let daily  = NetworkManager.shared.getEmployeeDailyReports(empId: employee.id)
-            weeklyReports = try await weekly
-            dailyReports  = try await daily
+            weeklyReports = try await NetworkManager.shared.getEmployeeWeeklyReports(empId: employee.id)
         } catch {
-            weeklyReports = []; dailyReports = []
+            weeklyReports = []
         }
         isLoading = false
     }

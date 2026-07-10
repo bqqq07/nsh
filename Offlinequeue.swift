@@ -24,7 +24,6 @@ struct PendingOperation: Codable, Identifiable {
 
     enum OperationType: String, Codable {
         case attendance      = "حضور"
-        case dailyEval       = "تقييم يومي"
         case weeklyEval      = "تقييم أسبوعي"
         case request         = "طلب"
         // HSE operations

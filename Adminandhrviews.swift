@@ -629,11 +629,8 @@ struct LabeledRow: View {
 // ═══════════════════════════════════════════════════
 struct AdminReportsView: View {
     @State private var weekly:      [EvalReport] = []
-    @State private var daily:       [EvalReport] = []
     @State private var isLoading    = true
-    @State private var tab          = 0
     @State private var weekStart    = Date().previousSunday
-    @State private var selectedDate = Date()
 
     private var weekEnd: Date {
         Calendar.current.date(byAdding: .day, value: 4, to: weekStart) ?? weekStart
@@ -644,50 +641,29 @@ struct AdminReportsView: View {
             ZStack {
                 Color(hex: "#f0f4ff").ignoresSafeArea()
                 VStack(spacing: 0) {
-                    Picker("", selection: $tab) {
-                        Text("أسبوعي").tag(0)
-                        Text("يومي").tag(1)
-                    }
-                    .pickerStyle(.segmented).padding(.horizontal).padding(.top, 8)
-                    .onChange(of: tab) { _ in Task { await load() } }
-
-                    if tab == 0 {
-                        HStack(spacing: 12) {
-                            Button {
-                                weekStart = Calendar.current.date(byAdding: .day, value: -7, to: weekStart) ?? weekStart
-                                Task { await load() }
-                            } label: { Image(systemName: "chevron.right").font(.headline).foregroundColor(Color(hex: "#4f8ef7")) }
-                            Spacer()
-                            VStack(spacing: 2) {
-                                Text("الأسبوع").font(.caption).foregroundColor(.secondary)
-                                Text("\(weekStart.iso) — \(weekEnd.iso)").font(.subheadline.bold())
-                            }
-                            Spacer()
-                            Button {
-                                let next = Calendar.current.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
-                                if next <= Date().previousSunday { weekStart = next; Task { await load() } }
-                            } label: { Image(systemName: "chevron.left").font(.headline).foregroundColor(Color(hex: "#4f8ef7")) }
+                    HStack(spacing: 12) {
+                        Button {
+                            weekStart = Calendar.current.date(byAdding: .day, value: -7, to: weekStart) ?? weekStart
+                            Task { await load() }
+                        } label: { Image(systemName: "chevron.right").font(.headline).foregroundColor(Color(hex: "#4f8ef7")) }
+                        Spacer()
+                        VStack(spacing: 2) {
+                            Text("الأسبوع").font(.caption).foregroundColor(.secondary)
+                            Text("\(weekStart.iso) — \(weekEnd.iso)").font(.subheadline.bold())
                         }
-                        .padding(.horizontal, 20).padding(.vertical, 10)
-                        .background(Color.white).shadow(color: .black.opacity(0.04), radius: 4)
-                    } else {
-                        HStack {
-                            Spacer()
-                            DatePicker("", selection: $selectedDate, displayedComponents: .date)
-                                .labelsHidden()
-                                .environment(\.locale, Locale(identifier: "ar_SA"))
-                                .onChange(of: selectedDate) { _ in Task { await load() } }
-                            Spacer()
-                        }
-                        .padding(.vertical, 8).background(Color.white)
-                        .shadow(color: .black.opacity(0.04), radius: 4)
+                        Spacer()
+                        Button {
+                            let next = Calendar.current.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
+                            if next <= Date().previousSunday { weekStart = next; Task { await load() } }
+                        } label: { Image(systemName: "chevron.left").font(.headline).foregroundColor(Color(hex: "#4f8ef7")) }
                     }
+                    .padding(.horizontal, 20).padding(.vertical, 10)
+                    .background(Color.white).shadow(color: .black.opacity(0.04), radius: 4)
 
                     if isLoading {
                         Spacer(); ProgressView(); Spacer()
                     } else {
-                        let list = tab == 0 ? weekly : daily
-                        if list.isEmpty {
+                        if weekly.isEmpty {
                             Spacer()
                             Image(systemName: "doc.text.magnifyingglass")
                                 .font(.system(size: 40)).foregroundColor(.secondary.opacity(0.4)).padding(.bottom, 8)
@@ -696,7 +672,7 @@ struct AdminReportsView: View {
                         } else {
                             ScrollView {
                                 LazyVStack(spacing: 10) {
-                                    ForEach(list) { r in AdminEvalRow(report: r) }
+                                    ForEach(weekly) { r in AdminEvalRow(report: r) }
                                 }
                                 .padding()
                             }
@@ -717,13 +693,9 @@ struct AdminReportsView: View {
     private func load() async {
         isLoading = true
         do {
-            if tab == 0 {
-                weekly = try await NetworkManager.shared.getWeeklyReports(ws: weekStart.iso, we: weekEnd.iso)
-            } else {
-                daily = try await NetworkManager.shared.getDailyReports(date: selectedDate.iso)
-            }
+            weekly = try await NetworkManager.shared.getWeeklyReports(ws: weekStart.iso, we: weekEnd.iso)
         } catch {
-            weekly = []; daily = []
+            weekly = []
         }
         isLoading = false
     }
