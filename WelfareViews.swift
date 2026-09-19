@@ -729,17 +729,3 @@ private struct WelfareSupervisorReportRow: View {
     }
 }
 
-// ── URL extension for sheet ────────────────────────────────────────────
-extension URL: Identifiable {
-    public var id: String { absoluteString }
-}
-
-// ── SafariView for in-app PDF viewing ─────────────────────────────────
-import SafariServices
-struct SafariView: UIViewControllerRepresentable {
-    let url: URL
-    func makeUIViewController(context: Context) -> SFSafariViewController {
-        SFSafariViewController(url: url)
-    }
-    func updateUIViewController(_ vc: SFSafariViewController, context: Context) {}
-}
