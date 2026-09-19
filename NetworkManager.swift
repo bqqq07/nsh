@@ -1684,10 +1684,10 @@ extension NetworkManager {
     }
 
     // ── Trainee Weekly Report (returns raw PPTX bytes) ────────────────
-    func adminTraineeReport() async throws -> Data {
+    func adminTraineeReport(traineeIds: [Int] = []) async throws -> Data {
         var req = makeRequest("/api/hse/trainee-report/generate-auto", method: "POST")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: [:])
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["trainee_ids": traineeIds])
         let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw NSError(domain: "TraineeReport", code: (resp as? HTTPURLResponse)?.statusCode ?? 0,

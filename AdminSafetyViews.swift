@@ -636,40 +636,90 @@ private struct AssignOfficerSheet: View {
 // ══════════════════════════════════════════════════════════════════════════════
 
 struct TraineeWeeklyReportView: View {
+    @State private var allOfficers: [AdminOfficersReportOfficer] = []
+    @State private var loadingOfficers = true
+    @State private var selectedIds: Set<Int> = []
+    @State private var roleFilter  = "all"
     @State private var isGenerating = false
     @State private var errorMsg     = ""
     @State private var shareItem: ShareableFile? = nil
 
+    private let roles = [("all", "الكل"), ("safety_officer", "Safety"), ("safety_welfare", "Welfare"), ("environment_officer", "Environment")]
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                // Icon + description
-                VStack(spacing: 12) {
-                    Image(systemName: "doc.richtext.fill")
-                        .font(.system(size: 56))
-                        .foregroundColor(Color(hex: "#7b5ea7"))
-                    Text("Trainee Weekly Report")
-                        .font(.title2).bold()
-                    Text("يولّد تقرير أسبوعي شامل بصيغة PPTX يتضمن:\nتقدم الأوفيسرز في الـ E-Learning، تدريب PTW، الملاحظات اليومية، وإحصائيات TBT للأسبوع الحالي.")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-                .padding(.top, 32)
-
+            VStack(spacing: 16) {
                 // Week label
                 let (ws, we) = currentWeekRange()
                 HStack(spacing: 8) {
-                    Image(systemName: "calendar")
-                        .foregroundColor(.secondary)
+                    Image(systemName: "calendar").foregroundColor(.secondary)
                     Text("الأسبوع الحالي: \(ws) – \(we)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .font(.subheadline).foregroundColor(.secondary)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(Color(.systemGray6))
-                .cornerRadius(10)
+                .background(Color(.systemGray6)).cornerRadius(10)
+                .padding(.horizontal)
+
+                // Role filter chips
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(roles, id: \.0) { key, label in
+                            Button {
+                                roleFilter = key
+                                applyRoleFilter()
+                            } label: {
+                                Text(label)
+                                    .font(.caption).bold()
+                                    .padding(.horizontal, 14).padding(.vertical, 7)
+                                    .background(roleFilter == key ? Color(hex: "#7b5ea7") : Color(.systemGray5))
+                                    .foregroundColor(roleFilter == key ? .white : .primary)
+                                    .cornerRadius(8)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+
+                // Officers list
+                if loadingOfficers {
+                    ProgressView("تحميل الأوفيسرز...").padding()
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("اختر الأوفيسرز").font(.headline)
+                            Spacer()
+                            Button("الكل") { selectedIds = Set(allOfficers.map { $0.officer_id }) }
+                                .font(.caption).foregroundColor(.blue)
+                            Button("لا شيء") { selectedIds.removeAll() }
+                                .font(.caption).foregroundColor(.red)
+                        }
+                        .padding(.horizontal)
+
+                        ForEach(groupedOfficers, id: \.0) { role, officers in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(officers.first?.role_label ?? role)
+                                    .font(.caption).bold().foregroundColor(.secondary)
+                                    .padding(.horizontal).textCase(.uppercase)
+                                ForEach(officers) { o in
+                                    Button {
+                                        if selectedIds.contains(o.officer_id) { selectedIds.remove(o.officer_id) }
+                                        else { selectedIds.insert(o.officer_id) }
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: selectedIds.contains(o.officer_id) ? "checkmark.square.fill" : "square")
+                                                .foregroundColor(selectedIds.contains(o.officer_id) ? Color(hex: "#7b5ea7") : .secondary)
+                                            Text(o.name).font(.subheadline).foregroundColor(.primary)
+                                            Spacer()
+                                            Text(o.code).font(.caption2.monospaced()).foregroundColor(.secondary)
+                                        }
+                                        .padding(.horizontal).padding(.vertical, 7)
+                                    }
+                                    Divider().padding(.leading)
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Generate button
                 Button {
@@ -681,42 +731,61 @@ struct TraineeWeeklyReportView: View {
                             Text("جاري التوليد...").bold()
                         } else {
                             Image(systemName: "wand.and.stars")
-                            Text("توليد التقرير").bold()
+                            Text("توليد التقرير PPTX").bold()
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(isGenerating ? Color.gray : Color(hex: "#7b5ea7"))
+                    .background((isGenerating || selectedIds.isEmpty) ? Color.gray : Color(hex: "#7b5ea7"))
                     .foregroundColor(.white)
                     .cornerRadius(14)
                     .padding(.horizontal)
                 }
-                .disabled(isGenerating)
+                .disabled(isGenerating || selectedIds.isEmpty)
 
                 if !errorMsg.isEmpty {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
-                        Text(errorMsg).font(.subheadline).foregroundColor(.red)
-                    }
-                    .padding()
-                    .background(Color.red.opacity(0.08))
-                    .cornerRadius(10)
-                    .padding(.horizontal)
+                    Text(errorMsg).font(.subheadline).foregroundColor(.red)
+                        .padding().background(Color.red.opacity(0.08)).cornerRadius(10).padding(.horizontal)
                 }
 
                 Spacer(minLength: 40)
             }
+            .padding(.top)
         }
         .navigationTitle("Trainee Weekly Report")
-        .sheet(item: $shareItem) { f in
-            ActivityView(items: [f.url])
+        .task { await loadOfficers() }
+        .sheet(item: $shareItem) { f in ActivityView(items: [f.url]) }
+    }
+
+    private var groupedOfficers: [(String, [AdminOfficersReportOfficer])] {
+        var dict: [String: [AdminOfficersReportOfficer]] = [:]
+        for o in allOfficers { dict[o.role, default: []].append(o) }
+        return dict.sorted { $0.key < $1.key }
+    }
+
+    private func applyRoleFilter() {
+        if roleFilter == "all" {
+            selectedIds = Set(allOfficers.map { $0.officer_id })
+        } else {
+            selectedIds = Set(allOfficers.filter { $0.role == roleFilter }.map { $0.officer_id })
         }
+    }
+
+    private func loadOfficers() async {
+        loadingOfficers = true
+        do {
+            let res = try await NetworkManager.shared.adminOfficersReport(
+                dateFrom: formatDateISO(Date()), dateTo: formatDateISO(Date()), officerIds: [])
+            allOfficers = res.all_officers
+            selectedIds = Set(allOfficers.map { $0.officer_id })
+        } catch {}
+        loadingOfficers = false
     }
 
     private func generate() async {
         isGenerating = true; errorMsg = ""
         do {
-            let data = try await NetworkManager.shared.adminTraineeReport()
+            let data = try await NetworkManager.shared.adminTraineeReport(traineeIds: Array(selectedIds))
             let tmpURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("Trainee_Weekly_Report_\(weekTag()).pptx")
             try data.write(to: tmpURL)
