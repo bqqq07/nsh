@@ -643,34 +643,35 @@ struct TraineeWeeklyReportView: View {
     @State private var isGenerating = false
     @State private var errorMsg     = ""
     @State private var shareItem: ShareableFile? = nil
-    @State private var weekOffset  = 0
+    @State private var weekStart   = Date()
 
     private let roles = [("all", "الكل"), ("safety_officer", "Safety"), ("safety_welfare", "Welfare"), ("environment_officer", "Environment")]
+
+    private var weekEnd: Date { Calendar.current.date(byAdding: .day, value: 6, to: weekStart) ?? weekStart }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // Week navigator
-                let (ws, we) = weekRange(offset: weekOffset)
-                HStack(spacing: 12) {
-                    Button { weekOffset -= 1 } label: {
-                        Image(systemName: "chevron.left").font(.subheadline.bold())
+                // Date picker
+                VStack(spacing: 8) {
+                    HStack {
+                        Image(systemName: "calendar").foregroundColor(Color(hex: "#7b5ea7"))
+                        Text("تاريخ بداية الأسبوع").font(.subheadline).fontWeight(.medium)
+                        Spacer()
                     }
-                    .foregroundColor(Color(hex: "#7b5ea7"))
-                    Spacer()
-                    HStack(spacing: 6) {
-                        Image(systemName: "calendar").foregroundColor(.secondary)
-                        Text("\(ws) – \(we)")
-                            .font(.subheadline).foregroundColor(.secondary)
+                    DatePicker("", selection: $weekStart, in: ...Date(), displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 4) {
+                        Text("النهاية:")
+                            .font(.caption).foregroundColor(.secondary)
+                        Text(formatDisplay(weekEnd))
+                            .font(.caption).fontWeight(.semibold).foregroundColor(.secondary)
                     }
-                    Spacer()
-                    Button { if weekOffset < 0 { weekOffset += 1 } } label: {
-                        Image(systemName: "chevron.right").font(.subheadline.bold())
-                    }
-                    .foregroundColor(weekOffset < 0 ? Color(hex: "#7b5ea7") : .gray)
-                    .disabled(weekOffset >= 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 16).padding(.vertical, 10)
+                .padding(.horizontal, 16).padding(.vertical, 12)
                 .background(Color(.systemGray6)).cornerRadius(10)
                 .padding(.horizontal)
 
@@ -799,14 +800,11 @@ struct TraineeWeeklyReportView: View {
     private func generate() async {
         isGenerating = true; errorMsg = ""
         do {
-            let cal = Calendar(identifier: .iso8601)
-            let base = cal.date(byAdding: .weekOfYear, value: weekOffset, to: Date()) ?? Date()
-            let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: base)) ?? base
             let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
-            let wsStr = df.string(from: ws)
+            let wsStr = df.string(from: weekStart)
             let data = try await NetworkManager.shared.adminTraineeReport(traineeIds: Array(selectedIds), weekStart: wsStr)
             let tmpURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("Trainee_Weekly_Report_\(weekTag()).pptx")
+                .appendingPathComponent("Trainee_Weekly_Report_\(df.string(from: weekStart)).pptx")
             try data.write(to: tmpURL)
             await MainActor.run { shareItem = ShareableFile(url: tmpURL) }
         } catch {
@@ -815,21 +813,9 @@ struct TraineeWeeklyReportView: View {
         isGenerating = false
     }
 
-    private func weekRange(offset: Int) -> (String, String) {
-        let cal = Calendar(identifier: .iso8601)
-        let base = cal.date(byAdding: .weekOfYear, value: offset, to: Date()) ?? Date()
-        let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: base)) ?? base
-        let we = cal.date(byAdding: .day, value: 6, to: ws) ?? ws
-        let df = DateFormatter(); df.dateFormat = "dd MMM"
-        return (df.string(from: ws), df.string(from: we))
-    }
-
-    private func weekTag() -> String {
-        let cal = Calendar(identifier: .iso8601)
-        let base = cal.date(byAdding: .weekOfYear, value: weekOffset, to: Date()) ?? Date()
-        let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: base)) ?? base
-        let df = DateFormatter(); df.dateFormat = "yyyyMMdd"
-        return df.string(from: ws)
+    private func formatDisplay(_ date: Date) -> String {
+        let df = DateFormatter(); df.dateFormat = "dd MMM yyyy"
+        return df.string(from: date)
     }
 }
 
