@@ -105,7 +105,7 @@ struct AdminHSETabView: View {
             EmployeesListView()
                 .tabItem { Label("Employees", systemImage: "person.2.fill") }
 
-            HSEDashboardView()
+            AdminSafetyManagerDashboardView()
                 .tabItem { Label("HSE", systemImage: "shield.checkered") }
 
             NavigationView { AdminManagementView() }
@@ -130,6 +130,11 @@ struct AdminHSETabView: View {
 struct AdminManagementView: View {
     var body: some View {
         List {
+            Section(header: Text("Safety")) {
+                NavigationLink(destination: AdminSafetyMenuView()) {
+                    Label("Safety Management", systemImage: "shield.checkered")
+                }
+            }
             Section(header: Text("Team")) {
                 NavigationLink(destination: SupervisorsRankingView()) {
                     Label("Supervisors Ranking", systemImage: "person.3.fill")
