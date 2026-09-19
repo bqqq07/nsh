@@ -25,6 +25,8 @@
 		A20000010000000000000FAA /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000010000000000000FAA /* Extensions.swift */; };
 		A200000100000000000012AA /* SuperAdminViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000012AA /* SuperAdminViews.swift */; };
 		A200000100000000000014AA /* SafetySupervisorViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000014AA /* SafetySupervisorViews.swift */; };
+		A200000100000000000015AA /* PtwTrainingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000015AA /* PtwTrainingViews.swift */; };
+		A200000100000000000016AA /* WelfareViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000100000000000016AA /* WelfareViews.swift */; };
 		A200000100000000000010AA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A100000100000000000010AA /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -47,6 +49,8 @@
 		A10000010000000000000FAA /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
 		A100000100000000000012AA /* SuperAdminViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperAdminViews.swift; sourceTree = "<group>"; };
 		A100000100000000000014AA /* SafetySupervisorViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetySupervisorViews.swift; sourceTree = "<group>"; };
+		A100000100000000000015AA /* PtwTrainingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PtwTrainingViews.swift; sourceTree = "<group>"; };
+		A100000100000000000016AA /* WelfareViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelfareViews.swift; sourceTree = "<group>"; };
 		A100000100000000000010AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A100000100000000000011AA /* z NSH.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "z NSH.entitlements"; sourceTree = "<group>"; };
 		A000000100000000000008AA /* z NSH.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "z NSH.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -92,6 +96,8 @@
 				A10000010000000000000FAA /* Extensions.swift */,
 				A100000100000000000012AA /* SuperAdminViews.swift */,
 				A100000100000000000014AA /* SafetySupervisorViews.swift */,
+				A100000100000000000015AA /* PtwTrainingViews.swift */,
+				A100000100000000000016AA /* WelfareViews.swift */,
 				A100000100000000000010AA /* Assets.xcassets */,
 				A100000100000000000011AA /* z NSH.entitlements */,
 			);
@@ -193,6 +199,8 @@
 				A20000010000000000000FAA /* Extensions.swift in Sources */,
 				A200000100000000000012AA /* SuperAdminViews.swift in Sources */,
 				A200000100000000000014AA /* SafetySupervisorViews.swift in Sources */,
+				A200000100000000000015AA /* PtwTrainingViews.swift in Sources */,
+				A200000100000000000016AA /* WelfareViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
