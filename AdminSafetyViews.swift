@@ -643,18 +643,32 @@ struct TraineeWeeklyReportView: View {
     @State private var isGenerating = false
     @State private var errorMsg     = ""
     @State private var shareItem: ShareableFile? = nil
+    @State private var weekOffset  = 0
 
     private let roles = [("all", "الكل"), ("safety_officer", "Safety"), ("safety_welfare", "Welfare"), ("environment_officer", "Environment")]
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // Week label
-                let (ws, we) = currentWeekRange()
-                HStack(spacing: 8) {
-                    Image(systemName: "calendar").foregroundColor(.secondary)
-                    Text("الأسبوع الحالي: \(ws) – \(we)")
-                        .font(.subheadline).foregroundColor(.secondary)
+                // Week navigator
+                let (ws, we) = weekRange(offset: weekOffset)
+                HStack(spacing: 12) {
+                    Button { weekOffset -= 1 } label: {
+                        Image(systemName: "chevron.left").font(.subheadline.bold())
+                    }
+                    .foregroundColor(Color(hex: "#7b5ea7"))
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Image(systemName: "calendar").foregroundColor(.secondary)
+                        Text("\(ws) – \(we)")
+                            .font(.subheadline).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button { if weekOffset < 0 { weekOffset += 1 } } label: {
+                        Image(systemName: "chevron.right").font(.subheadline.bold())
+                    }
+                    .foregroundColor(weekOffset < 0 ? Color(hex: "#7b5ea7") : .gray)
+                    .disabled(weekOffset >= 0)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
                 .background(Color(.systemGray6)).cornerRadius(10)
@@ -785,29 +799,37 @@ struct TraineeWeeklyReportView: View {
     private func generate() async {
         isGenerating = true; errorMsg = ""
         do {
-            let data = try await NetworkManager.shared.adminTraineeReport(traineeIds: Array(selectedIds))
+            let cal = Calendar(identifier: .iso8601)
+            let base = cal.date(byAdding: .weekOfYear, value: weekOffset, to: Date()) ?? Date()
+            let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: base)) ?? base
+            let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+            let wsStr = df.string(from: ws)
+            let data = try await NetworkManager.shared.adminTraineeReport(traineeIds: Array(selectedIds), weekStart: wsStr)
             let tmpURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("Trainee_Weekly_Report_\(weekTag()).pptx")
             try data.write(to: tmpURL)
             await MainActor.run { shareItem = ShareableFile(url: tmpURL) }
         } catch {
-            await MainActor.run { errorMsg = "فشل توليد التقرير — تأكد من وجود القالب على الخادم" }
+            await MainActor.run { errorMsg = "فشل توليد التقرير" }
         }
         isGenerating = false
     }
 
-    private func currentWeekRange() -> (String, String) {
+    private func weekRange(offset: Int) -> (String, String) {
         let cal = Calendar(identifier: .iso8601)
-        let now = Date()
-        let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
-        let we = cal.date(byAdding: .day, value: 6, to: ws) ?? now
+        let base = cal.date(byAdding: .weekOfYear, value: offset, to: Date()) ?? Date()
+        let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: base)) ?? base
+        let we = cal.date(byAdding: .day, value: 6, to: ws) ?? ws
         let df = DateFormatter(); df.dateFormat = "dd MMM"
         return (df.string(from: ws), df.string(from: we))
     }
 
     private func weekTag() -> String {
+        let cal = Calendar(identifier: .iso8601)
+        let base = cal.date(byAdding: .weekOfYear, value: weekOffset, to: Date()) ?? Date()
+        let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: base)) ?? base
         let df = DateFormatter(); df.dateFormat = "yyyyMMdd"
-        return df.string(from: Date())
+        return df.string(from: ws)
     }
 }
 
