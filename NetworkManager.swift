@@ -1683,6 +1683,19 @@ extension NetworkManager {
         try hseCheck(resp, data: data)
     }
 
+    // ── Trainee Weekly Report (returns raw PPTX bytes) ────────────────
+    func adminTraineeReport() async throws -> Data {
+        var req = makeRequest("/api/hse/trainee-report/generate-auto", method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [:])
+        let (data, resp) = try await session.data(for: req)
+        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
+            throw NSError(domain: "TraineeReport", code: (resp as? HTTPURLResponse)?.statusCode ?? 0,
+                          userInfo: [NSLocalizedDescriptionKey: "Server error"])
+        }
+        return data
+    }
+
     // ── Observation closure photo (after type) ─────────────────────────
     func hseObservationUploadClosurePhoto(obsId: Int, imageData: Data) async throws {
         let boundary = "HSEBoundary-\(UUID().uuidString)"

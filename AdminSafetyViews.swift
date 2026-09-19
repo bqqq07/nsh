@@ -452,8 +452,8 @@ struct AdminSafetyMenuView: View {
                 }
             }
             Section(header: Text("التقارير")) {
-                NavigationLink(destination: AdminOfficersReportView()) {
-                    Label("تقرير نشاط الأوفيسرز", systemImage: "doc.text.fill")
+                NavigationLink(destination: TraineeWeeklyReportView()) {
+                    Label("Trainee Weekly Report", systemImage: "doc.richtext.fill")
                 }
             }
             Section(header: Text("الصلاحيات")) {
@@ -632,244 +632,127 @@ private struct AssignOfficerSheet: View {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  MARK: - Admin Officers Activity Report
+//  MARK: - Trainee Weekly Report Generator
 // ══════════════════════════════════════════════════════════════════════════════
 
-struct AdminOfficersReportView: View {
-    @State private var allOfficers: [AdminOfficersReportOfficer] = []
-    @State private var result: AdminOfficersReportResponse? = nil
-    @State private var isLoading   = false
-    @State private var loadingOfficers = true
-    @State private var dateFrom    = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-    @State private var dateTo      = Date()
-    @State private var selectedIds: Set<Int> = []
-    @State private var roleFilter  = "all"
-    @State private var errorMsg    = ""
-
-    private let roles = [("all", "الكل"), ("safety_officer", "Safety"), ("safety_welfare", "Welfare"), ("environment_officer", "Environment")]
+struct TraineeWeeklyReportView: View {
+    @State private var isGenerating = false
+    @State private var errorMsg     = ""
+    @State private var shareItem: ShareableFile? = nil
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
-                // Date range
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("نطاق التاريخ").font(.headline).padding(.horizontal)
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("من").font(.caption).foregroundColor(.secondary)
-                            DatePicker("", selection: $dateFrom, displayedComponents: .date)
-                                .labelsHidden()
-                        }
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("إلى").font(.caption).foregroundColor(.secondary)
-                            DatePicker("", selection: $dateTo, displayedComponents: .date)
-                                .labelsHidden()
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                }
-
-                // Role filter
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(roles, id: \.0) { key, label in
-                            Button {
-                                roleFilter = key
-                                applyRoleFilter()
-                            } label: {
-                                Text(label)
-                                    .font(.caption).bold()
-                                    .padding(.horizontal, 14).padding(.vertical, 7)
-                                    .background(roleFilter == key ? Color(hex: "#0f172a") : Color(.systemGray5))
-                                    .foregroundColor(roleFilter == key ? .white : .primary)
-                                    .cornerRadius(8)
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-
-                // Officers list
-                if loadingOfficers {
-                    ProgressView("تحميل الأوفيسرز...").padding()
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("اختر الأوفيسرز").font(.headline)
-                            Spacer()
-                            Button("الكل") { selectedIds = Set(allOfficers.map { $0.officer_id }) }
-                                .font(.caption).foregroundColor(.blue)
-                            Button("لا شيء") { selectedIds.removeAll() }
-                                .font(.caption).foregroundColor(.red)
-                        }
+            VStack(spacing: 24) {
+                // Icon + description
+                VStack(spacing: 12) {
+                    Image(systemName: "doc.richtext.fill")
+                        .font(.system(size: 56))
+                        .foregroundColor(Color(hex: "#7b5ea7"))
+                    Text("Trainee Weekly Report")
+                        .font(.title2).bold()
+                    Text("يولّد تقرير أسبوعي شامل بصيغة PPTX يتضمن:\nتقدم الأوفيسرز في الـ E-Learning، تدريب PTW، الملاحظات اليومية، وإحصائيات TBT للأسبوع الحالي.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
                         .padding(.horizontal)
-                        ForEach(groupedOfficers, id: \.0) { role, officers in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(officers.first?.role_label ?? role)
-                                    .font(.caption).bold().foregroundColor(.secondary)
-                                    .padding(.horizontal)
-                                    .textCase(.uppercase)
-                                ForEach(officers) { o in
-                                    Button {
-                                        if selectedIds.contains(o.officer_id) {
-                                            selectedIds.remove(o.officer_id)
-                                        } else {
-                                            selectedIds.insert(o.officer_id)
-                                        }
-                                    } label: {
-                                        HStack {
-                                            Image(systemName: selectedIds.contains(o.officer_id) ? "checkmark.square.fill" : "square")
-                                                .foregroundColor(selectedIds.contains(o.officer_id) ? Color(hex: "#0f172a") : .secondary)
-                                            Text(o.name).font(.subheadline).foregroundColor(.primary)
-                                            Spacer()
-                                            Text(o.code).font(.caption2.monospaced()).foregroundColor(.secondary)
-                                        }
-                                        .padding(.horizontal)
-                                        .padding(.vertical, 6)
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
+                .padding(.top, 32)
+
+                // Week label
+                let (ws, we) = currentWeekRange()
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar")
+                        .foregroundColor(.secondary)
+                    Text("الأسبوع الحالي: \(ws) – \(we)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(Color(.systemGray6))
+                .cornerRadius(10)
 
                 // Generate button
                 Button {
-                    Task { await generateReport() }
+                    Task { await generate() }
                 } label: {
-                    HStack {
-                        if isLoading { ProgressView().tint(.white) }
-                        Text("توليد التقرير").bold()
+                    HStack(spacing: 10) {
+                        if isGenerating {
+                            ProgressView().tint(.white)
+                            Text("جاري التوليد...").bold()
+                        } else {
+                            Image(systemName: "wand.and.stars")
+                            Text("توليد التقرير").bold()
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color(hex: "#0f172a"))
+                    .background(isGenerating ? Color.gray : Color(hex: "#7b5ea7"))
                     .foregroundColor(.white)
-                    .cornerRadius(12)
+                    .cornerRadius(14)
                     .padding(.horizontal)
                 }
-                .disabled(isLoading || selectedIds.isEmpty)
-
-                // Results
-                if let r = result {
-                    reportResults(r)
-                }
+                .disabled(isGenerating)
 
                 if !errorMsg.isEmpty {
-                    Text(errorMsg).foregroundColor(.red).padding()
-                }
-            }
-            .padding(.top)
-        }
-        .navigationTitle("تقرير نشاط الأوفيسرز")
-        .task { await loadOfficers() }
-    }
-
-    private var groupedOfficers: [(String, [AdminOfficersReportOfficer])] {
-        var dict: [String: [AdminOfficersReportOfficer]] = [:]
-        for o in allOfficers { dict[o.role, default: []].append(o) }
-        return dict.sorted { $0.key < $1.key }
-    }
-
-    private func applyRoleFilter() {
-        if roleFilter == "all" {
-            selectedIds = Set(allOfficers.map { $0.officer_id })
-        } else {
-            selectedIds = Set(allOfficers.filter { $0.role == roleFilter }.map { $0.officer_id })
-        }
-    }
-
-    private func loadOfficers() async {
-        loadingOfficers = true
-        do {
-            let dummy = try await NetworkManager.shared.adminOfficersReport(
-                dateFrom: formatDateISO(Date()), dateTo: formatDateISO(Date()), officerIds: [])
-            allOfficers = dummy.all_officers
-            selectedIds = Set(allOfficers.map { $0.officer_id })
-        } catch {}
-        loadingOfficers = false
-    }
-
-    private func generateReport() async {
-        isLoading = true; errorMsg = ""
-        do {
-            result = try await NetworkManager.shared.adminOfficersReport(
-                dateFrom: formatDateISO(dateFrom),
-                dateTo: formatDateISO(dateTo),
-                officerIds: Array(selectedIds))
-        } catch {
-            errorMsg = "فشل توليد التقرير"
-        }
-        isLoading = false
-    }
-
-    @ViewBuilder
-    private func reportResults(_ r: AdminOfficersReportResponse) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("النتائج: \(r.date_from) → \(r.date_to)")
-                .font(.headline).padding(.horizontal)
-            Text("\(r.rows.count) أوفيسر  •  إجمالي التقديمات: \(r.total_submissions)  •  الملاحظات: \(r.total_findings)")
-                .font(.caption).foregroundColor(.secondary).padding(.horizontal)
-            VStack(spacing: 0) {
-                // Header row
-                HStack(spacing: 0) {
-                    Text("الاسم").frame(maxWidth: .infinity, alignment: .leading).font(.caption).bold().foregroundColor(.secondary)
-                    Text("الدور").frame(width: 80, alignment: .leading).font(.caption).bold().foregroundColor(.secondary)
-                    Text("تقديمات").frame(width: 72, alignment: .center).font(.caption).bold().foregroundColor(.secondary)
-                    Text("ملاحظات").frame(width: 66, alignment: .center).font(.caption).bold().foregroundColor(.secondary)
-                }
-                .padding(.vertical, 8).padding(.horizontal, 12)
-                .background(Color(.systemGray6))
-                Divider()
-                ForEach(r.rows) { row in
-                    HStack(spacing: 0) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(row.name).font(.caption).bold()
-                            Text(row.code).font(.caption2.monospaced()).foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(row.role_label).frame(width: 80, alignment: .leading)
-                            .font(.caption2).foregroundColor(roleColor(row.role))
-                        Text(row.submissions == 0 ? "—" : "\(row.submissions)")
-                            .frame(width: 72, alignment: .center)
-                            .font(.caption.bold())
-                            .foregroundColor(row.submissions > 0 ? .green : .secondary)
-                        Text(row.findings == 0 ? "—" : "\(row.findings)")
-                            .frame(width: 66, alignment: .center)
-                            .font(.caption.bold())
-                            .foregroundColor(row.findings > 0 ? .red : .secondary)
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+                        Text(errorMsg).font(.subheadline).foregroundColor(.red)
                     }
-                    .padding(.vertical, 7).padding(.horizontal, 12)
-                    Divider()
+                    .padding()
+                    .background(Color.red.opacity(0.08))
+                    .cornerRadius(10)
+                    .padding(.horizontal)
                 }
-                // Totals row
-                HStack(spacing: 0) {
-                    Text("الإجمالي").frame(maxWidth: .infinity, alignment: .leading)
-                        .font(.caption).bold()
-                    Text("").frame(width: 80)
-                    Text("\(r.total_submissions)").frame(width: 72, alignment: .center)
-                        .font(.caption).bold()
-                    Text("\(r.total_findings)").frame(width: 66, alignment: .center)
-                        .font(.caption).bold()
-                }
-                .padding(.vertical, 8).padding(.horizontal, 12)
-                .background(Color(.systemGray6))
+
+                Spacer(minLength: 40)
             }
-            .background(Color(.systemBackground))
-            .cornerRadius(12)
-            .padding(.horizontal)
+        }
+        .navigationTitle("Trainee Weekly Report")
+        .sheet(item: $shareItem) { f in
+            ActivityView(items: [f.url])
         }
     }
 
-    private func roleColor(_ role: String) -> Color {
-        switch role {
-        case "safety_officer":   return .blue
-        case "safety_welfare":   return .teal
-        case "environment_officer": return .green
-        default: return .secondary
+    private func generate() async {
+        isGenerating = true; errorMsg = ""
+        do {
+            let data = try await NetworkManager.shared.adminTraineeReport()
+            let tmpURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("Trainee_Weekly_Report_\(weekTag()).pptx")
+            try data.write(to: tmpURL)
+            await MainActor.run { shareItem = ShareableFile(url: tmpURL) }
+        } catch {
+            await MainActor.run { errorMsg = "فشل توليد التقرير — تأكد من وجود القالب على الخادم" }
         }
+        isGenerating = false
     }
+
+    private func currentWeekRange() -> (String, String) {
+        let cal = Calendar(identifier: .iso8601)
+        let now = Date()
+        let ws = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
+        let we = cal.date(byAdding: .day, value: 6, to: ws) ?? now
+        let df = DateFormatter(); df.dateFormat = "dd MMM"
+        return (df.string(from: ws), df.string(from: we))
+    }
+
+    private func weekTag() -> String {
+        let df = DateFormatter(); df.dateFormat = "yyyyMMdd"
+        return df.string(from: Date())
+    }
+}
+
+private struct ShareableFile: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct ActivityView: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
