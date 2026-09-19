@@ -935,6 +935,190 @@ struct HseChartsData: Codable {
     let mp_data:        HseMpTrend
 }
 
+// ── Admin Safety Manager Dashboard ───────────────────────────────────────────
+struct AdminSMOfficerRow: Codable, Identifiable {
+    let officer_id:      Int
+    let officer_name:    String
+    let checkin_days:    Int
+    let obs_total:       Int
+    let obs_unsafe_act:  Int
+    let obs_unsafe_cond: Int
+    let obs_positive:    Int
+    let obs_high:        Int
+    let obs_open:        Int
+    let jso:             Int
+    let tbt:             Int
+    let nm:              Int
+    let bbs:             Int
+    let ptw:             Int
+    let avg_insp:        Double?
+    let ca_open:         Int
+    let score:           Double
+    let prev_score:      Double
+    let trend:           Double
+    var id: Int { officer_id }
+}
+
+struct AdminSMOverdueCa: Codable, Identifiable {
+    let id:               Int
+    let action_required:  String
+    let due_date:         String?
+}
+
+struct AdminSMInactiveOfficer: Codable, Identifiable {
+    let officer_id: Int
+    let name:       String
+    var id: Int { officer_id }
+}
+
+struct AdminSMHighRiskItem: Codable, Identifiable {
+    let id:          Int
+    let date:        String
+    let officer_id:  Int
+    let category:    String
+    let location:    String
+    let description: String
+}
+
+struct AdminSMWelfareRow: Codable, Identifiable {
+    let officer_id:   Int
+    let officer_name: String
+    let rounds:       Int
+    let avg_score:    Double?
+    let finds_closed: Int
+    let finds_open:   Int
+    let complaints:   Int
+    var id: Int { officer_id }
+}
+
+struct AdminSafetyManagerDashboard: Codable {
+    let today:            String
+    let period:           String
+    let period_lbl:       String
+    let first_day:        String
+    let last_day:         String
+    let week_offset:      Int
+    let total_officers:   Int
+    let active_officers:  Int
+    let inactive_officers: [AdminSMInactiveOfficer]
+    let compliance_pct:   Int
+    let avg_score:        Double
+    let total_obs:        Int
+    let total_ua:         Int
+    let total_uc:         Int
+    let total_pos:        Int
+    let high_risk_open:   [AdminSMHighRiskItem]
+    let overdue_cas:      [AdminSMOverdueCa]
+    let officers:         [AdminSMOfficerRow]
+    let weekly_labels:    [String]
+    let weekly_avg:       [Double]
+    let welfare_rows:     [AdminSMWelfareRow]
+}
+
+// ── Admin Safety Teams ────────────────────────────────────────────────────────
+struct AdminTeamOfficer: Codable, Identifiable {
+    let team_id:    Int
+    let officer_id: Int
+    let name:       String
+    let code:       String
+    let role:       String
+    let role_label: String
+    var id: Int { team_id }
+}
+
+struct AdminTeamSupervisor: Codable, Identifiable {
+    let sup_id:   Int
+    let name:     String
+    let code:     String
+    let officers: [AdminTeamOfficer]
+    var id: Int { sup_id }
+}
+
+struct AdminTeamsAllOfficer: Codable, Identifiable {
+    let officer_id: Int
+    let name:       String
+    let code:       String
+    let role:       String
+    let role_label: String
+    let assigned:   Bool
+    var id: Int { officer_id }
+}
+
+struct AdminSafetyTeamsResponse: Codable {
+    let supervisors:  [AdminTeamSupervisor]
+    let unassigned:   [AdminTeamsAllOfficer]
+    let all_officers: [AdminTeamsAllOfficer]
+}
+
+// ── Admin Officers Report ─────────────────────────────────────────────────────
+struct AdminOfficersReportOfficer: Codable, Identifiable {
+    let officer_id: Int
+    let name:       String
+    let code:       String
+    let role:       String
+    let role_label: String
+    var id: Int { officer_id }
+}
+
+struct AdminOfficersReportRow: Codable, Identifiable {
+    let officer_id:  Int
+    let name:        String
+    let code:        String
+    let role:        String
+    let role_label:  String
+    let submissions: Int
+    let findings:    Int
+    let detail:      String
+    var id: Int { officer_id }
+}
+
+struct AdminOfficersReportResponse: Codable {
+    let date_from:        String
+    let date_to:          String
+    let rows:             [AdminOfficersReportRow]
+    let all_officers:     [AdminOfficersReportOfficer]
+    let total_submissions: Int
+    let total_findings:   Int
+}
+
+// ── Admin Safety Supervisor Assign ────────────────────────────────────────────
+struct AdminSupAssignOfficer: Codable, Identifiable {
+    let officer_id: Int
+    let name:       String
+    let code:       String
+    let assigned:   Bool?
+    var id: Int { officer_id }
+}
+
+struct AdminSupAssignSupervisor: Codable, Identifiable {
+    let sup_id:            Int
+    let name:              String
+    let code:              String
+    let assigned_officers: [AdminSupAssignOfficer]
+    var id: Int { sup_id }
+}
+
+struct AdminSupAssignResponse: Codable {
+    let supervisors:  [AdminSupAssignSupervisor]
+    let all_officers: [AdminSupAssignOfficer]
+    let unassigned:   [AdminSupAssignOfficer]
+}
+
+// ── Admin HSE Access ──────────────────────────────────────────────────────────
+struct AdminHseAccessUser: Codable, Identifiable {
+    let user_id:    Int
+    let name:       String
+    let code:       String
+    let role:       String
+    let granted:    String?
+    let is_primary: Bool
+    var id: Int { user_id }
+}
+
+struct AdminHseAccessResponse: Codable {
+    let access_list: [AdminHseAccessUser]
+}
+
 struct UserLocationItem {
     let pkg: Int
     let unit: String
@@ -1409,6 +1593,94 @@ extension NetworkManager {
         let (data, resp) = try await session.data(for: makeRequest("/api/hse/charts"))
         try hseCheck(resp, data: data)
         return try JSONDecoder().decode(HseChartsData.self, from: data)
+    }
+
+    // ── Admin Safety Manager Dashboard ───────────────────────────────────
+    func adminSafetyManagerDashboard(period: String = "week", weekOffset: Int = 0) async throws -> AdminSafetyManagerDashboard {
+        let (data, resp) = try await session.data(for: makeRequest("/api/hse/safety-manager-dashboard?period=\(period)&week_offset=\(weekOffset)"))
+        try hseCheck(resp, data: data)
+        return try JSONDecoder().decode(AdminSafetyManagerDashboard.self, from: data)
+    }
+
+    // ── Admin Safety Teams ────────────────────────────────────────────────
+    func adminSafetyTeams() async throws -> AdminSafetyTeamsResponse {
+        let (data, resp) = try await session.data(for: makeRequest("/api/admin/safety-teams"))
+        try hseCheck(resp, data: data)
+        return try JSONDecoder().decode(AdminSafetyTeamsResponse.self, from: data)
+    }
+
+    func adminSafetyTeamAssign(supId: Int, offId: Int) async throws {
+        var req = makeRequest("/api/admin/safety-teams", method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["action": "assign", "sup_id": supId, "off_id": offId])
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, resp) = try await session.data(for: req)
+        try hseCheck(resp, data: data)
+    }
+
+    func adminSafetyTeamRemove(teamId: Int) async throws {
+        var req = makeRequest("/api/admin/safety-teams", method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["action": "remove", "team_id": teamId])
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, resp) = try await session.data(for: req)
+        try hseCheck(resp, data: data)
+    }
+
+    // ── Admin Officers Report ─────────────────────────────────────────────
+    func adminOfficersReport(dateFrom: String, dateTo: String, officerIds: [Int] = []) async throws -> AdminOfficersReportResponse {
+        var req = makeRequest("/api/admin/officers-report", method: "POST")
+        var body: [String: Any] = ["date_from": dateFrom, "date_to": dateTo]
+        if !officerIds.isEmpty { body["officer_ids"] = officerIds }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, resp) = try await session.data(for: req)
+        try hseCheck(resp, data: data)
+        return try JSONDecoder().decode(AdminOfficersReportResponse.self, from: data)
+    }
+
+    // ── Admin Supervisor Assign ───────────────────────────────────────────
+    func adminSupAssignList() async throws -> AdminSupAssignResponse {
+        let (data, resp) = try await session.data(for: makeRequest("/api/admin/safety-supervisor/assign"))
+        try hseCheck(resp, data: data)
+        return try JSONDecoder().decode(AdminSupAssignResponse.self, from: data)
+    }
+
+    func adminSupAssign(supId: Int, officerId: Int, action: String) async throws {
+        var req = makeRequest("/api/admin/safety-supervisor/assign", method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["action": action, "sup_id": supId, "officer_id": officerId])
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, resp) = try await session.data(for: req)
+        try hseCheck(resp, data: data)
+    }
+
+    // ── Admin HSE Access ──────────────────────────────────────────────────
+    func adminHseAccessList() async throws -> AdminHseAccessResponse {
+        let (data, resp) = try await session.data(for: makeRequest("/api/admin/hse-access"))
+        try hseCheck(resp, data: data)
+        return try JSONDecoder().decode(AdminHseAccessResponse.self, from: data)
+    }
+
+    func adminHseAccessGrant(code: String) async throws -> AdminHseAccessUser? {
+        var req = makeRequest("/api/admin/hse-access", method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["action": "add", "code": code])
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, resp) = try await session.data(for: req)
+        try hseCheck(resp, data: data)
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let u = json["user"] as? [String: Any],
+           let uid = u["user_id"] as? Int,
+           let name = u["name"] as? String,
+           let code = u["code"] as? String {
+            return AdminHseAccessUser(user_id: uid, name: name, code: code, role: "", granted: nil, is_primary: false)
+        }
+        return nil
+    }
+
+    func adminHseAccessRemove(userId: Int) async throws {
+        var req = makeRequest("/api/admin/hse-access", method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["action": "remove", "user_id": userId])
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, resp) = try await session.data(for: req)
+        try hseCheck(resp, data: data)
     }
 
     // ── Observation closure photo (after type) ─────────────────────────
