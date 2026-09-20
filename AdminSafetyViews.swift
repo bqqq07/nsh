@@ -452,14 +452,14 @@ struct AdminSafetyMenuView: View {
                 }
             }
             Section(header: Text("المتابعة اليومية")) {
-                NavigationLink(destination: HSEDailyView()) {
-                    Label("Daily Observations", systemImage: "sun.max.fill")
-                }
                 NavigationLink(destination: HSEObservationsView(allowEditing: false)) {
                     Label("Observations", systemImage: "eye.fill")
                 }
                 NavigationLink(destination: HSEJsoView()) {
                     Label("JSO", systemImage: "doc.badge.gearshape.fill")
+                }
+                NavigationLink(destination: HSETbtView()) {
+                    Label("SGL / TBT", systemImage: "person.2.badge.gearshape")
                 }
             }
             Section(header: Text("التقارير")) {
