@@ -451,6 +451,17 @@ struct AdminSafetyMenuView: View {
                     Label("تعيين الأوفيسرز للمشرفين", systemImage: "arrow.triangle.2.circlepath.circle.fill")
                 }
             }
+            Section(header: Text("المتابعة اليومية")) {
+                NavigationLink(destination: HSEDailyView()) {
+                    Label("Daily Observations", systemImage: "sun.max.fill")
+                }
+                NavigationLink(destination: HSEObservationsView(allowEditing: false)) {
+                    Label("Observations", systemImage: "eye.fill")
+                }
+                NavigationLink(destination: HSEJsoView()) {
+                    Label("JSO", systemImage: "doc.badge.gearshape.fill")
+                }
+            }
             Section(header: Text("التقارير")) {
                 NavigationLink(destination: TraineeWeeklyReportView()) {
                     Label("Trainee Weekly Report", systemImage: "doc.richtext.fill")
