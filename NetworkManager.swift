@@ -1596,8 +1596,12 @@ extension NetworkManager {
     }
 
     // ── Admin Safety Manager Dashboard ───────────────────────────────────
-    func adminSafetyManagerDashboard(period: String = "week", weekOffset: Int = 0) async throws -> AdminSafetyManagerDashboard {
-        let (data, resp) = try await session.data(for: makeRequest("/api/hse/safety-manager-dashboard?period=\(period)&week_offset=\(weekOffset)"))
+    func adminSafetyManagerDashboard(period: String = "week", weekOffset: Int = 0,
+                                      dateFrom: String? = nil, dateTo: String? = nil) async throws -> AdminSafetyManagerDashboard {
+        var url = "/api/hse/safety-manager-dashboard?period=\(period)&week_offset=\(weekOffset)"
+        if let df = dateFrom { url += "&date_from=\(df)" }
+        if let dt = dateTo   { url += "&date_to=\(dt)" }
+        let (data, resp) = try await session.data(for: makeRequest(url))
         try hseCheck(resp, data: data)
         return try JSONDecoder().decode(AdminSafetyManagerDashboard.self, from: data)
     }

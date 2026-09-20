@@ -11,6 +11,8 @@ struct AdminSafetyManagerDashboardView: View {
     @State private var period     = "week"
     @State private var weekOffset = 0
     @State private var expandInactive = false
+    @State private var customFrom = Calendar.current.date(byAdding: .day, value: -6, to: Date()) ?? Date()
+    @State private var customTo   = Date()
 
     var body: some View {
         NavigationView {
@@ -65,6 +67,7 @@ struct AdminSafetyManagerDashboardView: View {
             Picker("", selection: $period) {
                 Text("الأسبوع").tag("week")
                 Text("الشهر").tag("month")
+                Text("مخصص").tag("custom")
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
@@ -72,10 +75,7 @@ struct AdminSafetyManagerDashboardView: View {
 
             if period == "week" {
                 HStack(spacing: 12) {
-                    Button {
-                        weekOffset -= 1
-                        Task { await load() }
-                    } label: {
+                    Button { weekOffset -= 1; Task { await load() } } label: {
                         Image(systemName: "chevron.right")
                             .font(.headline).foregroundColor(Color(hex: "#7b5ea7"))
                     }
@@ -92,6 +92,21 @@ struct AdminSafetyManagerDashboardView: View {
                     .disabled(weekOffset >= 0)
                 }
                 .padding(.horizontal)
+            } else if period == "custom" {
+                VStack(spacing: 6) {
+                    HStack {
+                        Text("من").font(.caption).foregroundColor(.secondary).frame(width: 28, alignment: .trailing)
+                        DatePicker("", selection: $customFrom, in: ...customTo, displayedComponents: .date)
+                            .labelsHidden().datePickerStyle(.compact)
+                            .onChange(of: customFrom) { _ in Task { await load() } }
+                        Spacer()
+                        Text("إلى").font(.caption).foregroundColor(.secondary).frame(width: 28, alignment: .trailing)
+                        DatePicker("", selection: $customTo, in: customFrom...Date(), displayedComponents: .date)
+                            .labelsHidden().datePickerStyle(.compact)
+                            .onChange(of: customTo) { _ in Task { await load() } }
+                    }
+                    .padding(.horizontal)
+                }
             } else {
                 Text(d.period_lbl).font(.subheadline.bold()).padding(.horizontal)
             }
@@ -159,26 +174,34 @@ struct AdminSafetyManagerDashboardView: View {
                     Divider()
                     ForEach(Array(d.officers.enumerated()), id: \.element.id) { idx, o in
                         let rank = idx + 1
-                        HStack(spacing: 0) {
-                            rankBadge(rank)
-                                .frame(width: 28, alignment: .center)
-                            Text(o.officer_name.components(separatedBy: " ").first ?? "")
-                                .frame(width: 110, alignment: .leading)
-                                .font(.caption).lineLimit(1)
-                            rankCell(o.checkin_days, hi: .teal)
-                            rankCell(o.obs_total, hi: .blue)
-                            rankCell(o.tbt, hi: .purple)
-                            rankCell(o.nm, hi: .red)
-                            rankCell(o.bbs, hi: .green)
-                            Text(String(format: "%.0f", o.score))
-                                .frame(width: 52, alignment: .center)
-                                .font(.caption.bold())
-                                .foregroundColor(.purple)
-                            trendCell(o.trend)
-                            rankCell(o.ca_open, hi: .orange)
+                        let fakeOfficer = HseDashboardOfficer(
+                            id: o.officer_id, name: o.officer_name,
+                            checked_in: o.checkin_days > 0, location: nil,
+                            obs_week: o.obs_total, jso_week: 0, tbt_week: o.tbt,
+                            nm_week: o.nm, bbs_week: o.bbs, total_week: o.obs_total)
+                        NavigationLink(destination: HSEOfficerDetailView(officer: fakeOfficer)) {
+                            HStack(spacing: 0) {
+                                rankBadge(rank)
+                                    .frame(width: 28, alignment: .center)
+                                Text(o.officer_name.components(separatedBy: " ").first ?? "")
+                                    .frame(width: 110, alignment: .leading)
+                                    .font(.caption).lineLimit(1)
+                                rankCell(o.checkin_days, hi: .teal)
+                                rankCell(o.obs_total, hi: .blue)
+                                rankCell(o.tbt, hi: .purple)
+                                rankCell(o.nm, hi: .red)
+                                rankCell(o.bbs, hi: .green)
+                                Text(String(format: "%.0f", o.score))
+                                    .frame(width: 52, alignment: .center)
+                                    .font(.caption.bold())
+                                    .foregroundColor(.purple)
+                                trendCell(o.trend)
+                                rankCell(o.ca_open, hi: .orange)
+                            }
+                            .padding(.vertical, 6).padding(.horizontal, 10)
+                            .background(o.checkin_days == 0 ? Color.red.opacity(0.04) : Color.clear)
                         }
-                        .padding(.vertical, 6).padding(.horizontal, 10)
-                        .background(o.checkin_days == 0 ? Color.red.opacity(0.04) : Color.clear)
+                        .buttonStyle(.plain)
                         Divider()
                     }
                 }
@@ -376,8 +399,11 @@ struct AdminSafetyManagerDashboardView: View {
     private func load() async {
         isLoading = true; errorMsg = ""
         do {
+            let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+            let from = period == "custom" ? df.string(from: customFrom) : nil
+            let to   = period == "custom" ? df.string(from: customTo)   : nil
             dashboard = try await NetworkManager.shared.adminSafetyManagerDashboard(
-                period: period, weekOffset: weekOffset)
+                period: period, weekOffset: weekOffset, dateFrom: from, dateTo: to)
         } catch {
             errorMsg = "تعذّر تحميل البيانات"
         }
