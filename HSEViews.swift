@@ -3284,6 +3284,15 @@ struct HSEOfficerDetailView: View {
 
     // ── PDF Export ────────────────────────────────────
 
+    private func compressPhoto(_ data: Data, maxSide: CGFloat = 110) -> String? {
+        guard let img = UIImage(data: data) else { return nil }
+        let s = min(maxSide / img.size.width, maxSide / img.size.height, 1.0)
+        let sz = CGSize(width: img.size.width * s, height: img.size.height * s)
+        let renderer = UIGraphicsImageRenderer(size: sz)
+        let thumb = renderer.image { _ in img.draw(in: CGRect(origin: .zero, size: sz)) }
+        return thumb.jpegData(compressionQuality: 0.3)?.base64EncodedString()
+    }
+
     private func fetchPhotosAsBase64(_ paths: [String]) async -> [String: String] {
         var result: [String: String] = [:]
         let token = SessionManager.shared.token ?? ""
@@ -3298,7 +3307,7 @@ struct HSEOfficerDetailView: View {
                     req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                     guard let (data, _) = try? await URLSession.shared.data(for: req),
                           !data.isEmpty else { return (path, nil) }
-                    return (path, data.base64EncodedString())
+                    return (path, self.compressPhoto(data))
                 }
             }
             for await (path, b64) in group {
@@ -3365,46 +3374,44 @@ struct HSEOfficerDetailView: View {
         }
         func riskSpan(_ r: String) -> String {
             switch r {
-            case "H": return "<span class='rH'>● عالي</span>"
-            case "M": return "<span class='rM'>● متوسط</span>"
-            default:  return "<span class='rL'>● منخفض</span>"
+            case "H": return "<span class='rH'>عالي</span>"
+            case "M": return "<span class='rM'>متوسط</span>"
+            default:  return "<span class='rL'>منخفض</span>"
             }
         }
 
-        // Observations with embedded photos
-        var obsCards = ""
+        // Observations table — each row + optional photo sub-row
+        var obsRows = ""
         for o in d.observations {
-            let stCls = o.status == "closed" ? "sc" : "so"
-            let stLbl = o.status == "closed" ? "مغلق" : "مفتوح"
-            var photoBlock = ""
-            for ph in (o.photos ?? []) {
-                if let b64 = photos[ph.path] {
-                    photoBlock += "<img src='data:image/jpeg;base64,\(b64)' class='obsImg'>"
-                }
-            }
-            obsCards += """
-            <div class='obsCard'>
-              <div class='obsHead'>
-                <span class='obsDate'>\(o.date)</span>
-                <span class='\(stCls)'>\(stLbl)</span>
-                \(riskSpan(o.risk_level))
-              </div>
-              <div class='obsType'>\(typeLbl(o.obs_type)) — \(o.category)</div>
-              \(o.location.isEmpty ? "" : "<div class='obsMeta'>📍 \(o.location)</div>")
-              \(o.description.isEmpty ? "" : "<div class='obsDesc'>\(o.description)</div>")
-              \(o.action_taken.isEmpty ? "" : "<div class='obsAction'>⚡ \(o.action_taken)</div>")
-              \(o.closure_action.isEmpty ? "" : "<div class='obsClose'>✅ \(o.closure_action)</div>")
-              \(photoBlock.isEmpty ? "" : "<div class='photoRow'>\(photoBlock)</div>")
-            </div>
+            let stSpan = o.status == "closed"
+                ? "<span class='sc'>مغلق</span>" : "<span class='so'>مفتوح</span>"
+            let detailLines = [o.description, o.action_taken.isEmpty ? "" : "⚡ " + o.action_taken,
+                               o.closure_action.isEmpty ? "" : "✅ " + o.closure_action]
+                .filter { !$0.isEmpty }.joined(separator: "<br>")
+            obsRows += """
+            <tr>
+              <td>\(o.date)</td>
+              <td>\(typeLbl(o.obs_type))</td>
+              <td>\(o.category)</td>
+              <td>\(riskSpan(o.risk_level))</td>
+              <td>\(stSpan)</td>
+              <td>\(o.location)</td>
+              <td>\(detailLines)</td>
+            </tr>
             """
+            let phs = (o.photos ?? []).compactMap { photos[$0.path] }
+            if !phs.isEmpty {
+                let imgs = phs.map { "<img src='data:image/jpeg;base64,\($0)' class='th'>" }.joined()
+                obsRows += "<tr class='prow'><td colspan='7'>\(imgs)</td></tr>"
+            }
         }
 
         var tbtRows = ""
         for t in d.tbts {
-            tbtRows += "<tr><td>\(t.date)</td><td>\(t.topic)</td><td>\(t.location)</td><td class='tc bold green'>\(t.attendee_count)</td></tr>"
+            tbtRows += "<tr><td>\(t.date)</td><td>\(t.topic)</td><td>\(t.location)</td><td class='tc'>\(t.attendee_count)</td></tr>"
             if let ats = t.attendees, !ats.isEmpty {
                 let names = ats.map { "\($0.emp_name) (\($0.emp_number))" }.joined(separator: " · ")
-                tbtRows += "<tr><td colspan='4' class='atRow'>\(names)</td></tr>"
+                tbtRows += "<tr><td colspan='4' class='sub'>\(names)</td></tr>"
             }
         }
 
@@ -3425,101 +3432,79 @@ struct HSEOfficerDetailView: View {
 
         var bbsRows = ""
         for b in d.bbs {
-            bbsRows += "<tr><td>\(b.date)</td><td class='tc bold green'>\(b.card_count)</td><td>\(b.notes)</td></tr>"
+            bbsRows += "<tr><td>\(b.date)</td><td class='tc'>\(b.card_count)</td><td>\(b.notes)</td></tr>"
         }
 
-        func tableSection(_ title: String, _ header: String, _ rows: String) -> String {
+        func sec(_ title: String, _ header: String, _ rows: String) -> String {
             guard !rows.isEmpty else { return "" }
-            return "<div class='secHdr'>\(title)</div><table class='dt'><thead>\(header)</thead><tbody>\(rows)</tbody></table>"
+            return """
+            <div class='sh'>\(title)</div>
+            <table class='dt'><thead>\(header)</thead><tbody>\(rows)</tbody></table>
+            """
         }
 
-        let tbtSec = tableSection("جلسات TBT (\(tbtCount))",
+        let obsSec = sec("الملاحظات الميدانية (\(obsCount))",
+            "<tr><th>التاريخ</th><th>النوع</th><th>الفئة</th><th>الخطورة</th><th>الحالة</th><th>الموقع</th><th>التفاصيل</th></tr>",
+            obsRows)
+        let tbtSec = sec("TBT (\(tbtCount))",
             "<tr><th>التاريخ</th><th>الموضوع</th><th>الموقع</th><th>الحضور</th></tr>", tbtRows)
-        let jsoSec = tableSection("إغلاق JSO (\(jsoCount))",
+        let jsoSec = sec("JSO (\(jsoCount))",
             "<tr><th>التاريخ</th><th>رقم JSO</th><th>الموقع</th><th>الإجراء</th></tr>", jsoRows)
-        let nmSec  = tableSection("Near Miss (\(nmCount))",
+        let nmSec  = sec("Near Miss (\(nmCount))",
             "<tr><th>التاريخ</th><th>الموقع</th><th>الوصف</th><th>الإجراء</th><th>أُبلغ</th></tr>", nmRows)
-        let ciSec  = tableSection("سجل الحضور (\(ciDays) يوم)",
+        let ciSec  = sec("سجل الحضور (\(ciDays) يوم)",
             "<tr><th>التاريخ</th><th>الموقع</th></tr>", ciRows)
-        let bbsSec = tableSection("بطاقات BBS (\(bbsTotal))",
+        let bbsSec = sec("بطاقات BBS (\(bbsTotal))",
             "<tr><th>التاريخ</th><th>عدد البطاقات</th><th>ملاحظات</th></tr>", bbsRows)
-
-        let obsSec = obsCards.isEmpty ? "" :
-            "<div class='secHdr'>الملاحظات الميدانية (\(obsCount))</div><div class='obsGrid'>\(obsCards)</div>"
 
         return """
         <!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width">
         <style>
-        *{box-sizing:border-box;margin:0;padding:0}
         body{font-family:Helvetica,Arial,sans-serif;font-size:11px;direction:rtl;
-             color:#14532d;background:#f0fdf4}
-        .page{padding:16px}
-        /* ─── Header ─── */
-        .hdr{background:linear-gradient(135deg,#166534,#15803d);color:white;
-             border-radius:12px;padding:18px 20px;margin-bottom:16px}
-        .hdr h1{font-size:20px;font-weight:bold;margin-bottom:6px}
-        .hdr .sub{font-size:10px;color:#bbf7d0;margin-top:3px}
-        /* ─── KPI strip ─── */
-        .kpiRow{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
-        .kpi{flex:1;min-width:80px;background:white;border:1px solid #86efac;
-             border-radius:10px;padding:10px 6px;text-align:center}
-        .kn{font-size:20px;font-weight:bold;color:#166534}
-        .kl{font-size:9px;color:#6b7280;margin-top:2px}
-        .kpi.ci .kn{color:\(ciRate >= 80 ? "#166534" : ciRate >= 50 ? "#d97706" : "#dc2626")}
-        /* ─── Section header ─── */
-        .secHdr{background:#166534;color:white;padding:6px 14px;border-radius:8px 8px 0 0;
-                font-weight:bold;font-size:11px;margin-top:16px}
-        /* ─── Tables ─── */
-        table.dt{width:100%;border-collapse:collapse;font-size:10px;
-                 background:white;border-radius:0 0 8px 8px;overflow:hidden;margin-bottom:8px}
-        table.dt thead th{background:#15803d;color:white;padding:5px 8px;
-                          border:1px solid #166534;text-align:right;font-size:10px}
-        table.dt tbody td{padding:5px 8px;border:1px solid #dcfce7;vertical-align:top}
-        table.dt tbody tr:nth-child(even) td{background:#f0fdf4}
-        .tc{text-align:center}.bold{font-weight:bold}.green{color:#166534}
-        .atRow{font-size:9px;color:#6b7280;padding:3px 8px;background:#f9fafb}
-        /* ─── Risk / status spans ─── */
+             color:#1e293b;background:#fff;margin:0;padding:16px}
+        .hdr{background:#1e293b;color:#fff;padding:14px 18px;margin-bottom:14px}
+        .hdr h1{font-size:17px;font-weight:bold;margin-bottom:4px}
+        .hdr p{font-size:10px;color:#94a3b8;margin-top:2px}
+        .kpiRow{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+        .kpi{flex:1;min-width:72px;border:1px solid #e2e8f0;padding:8px 4px;text-align:center}
+        .kn{font-size:18px;font-weight:bold;color:#1e293b}
+        .kl{font-size:9px;color:#64748b;margin-top:2px}
+        .kci{color:\(ciRate >= 80 ? "#16a34a" : ciRate >= 50 ? "#d97706" : "#dc2626")}
+        .sh{background:#334155;color:#fff;padding:5px 12px;font-weight:bold;font-size:11px;margin-top:14px}
+        table.dt{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:6px}
+        table.dt thead th{background:#475569;color:#fff;padding:5px 7px;
+                          border:1px solid #64748b;text-align:right}
+        table.dt tbody td{padding:4px 7px;border:1px solid #e2e8f0;vertical-align:top}
+        table.dt tbody tr:nth-child(even) td{background:#f8fafc}
+        .prow td{padding:4px 7px;border:1px solid #e2e8f0;background:#f1f5f9}
+        .th{width:72px;height:54px;object-fit:cover;margin-left:4px;
+            border:1px solid #cbd5e1;vertical-align:top}
+        .tc{text-align:center;font-weight:bold}
+        .sub{font-size:9px;color:#64748b;padding:2px 7px;background:#f8fafc}
         .rH{color:#dc2626;font-weight:bold}
         .rM{color:#d97706;font-weight:bold}
         .rL{color:#16a34a;font-weight:bold}
-        .sc{background:#dcfce7;color:#166534;padding:1px 6px;border-radius:4px;font-size:9px}
-        .so{background:#ffedd5;color:#c2410c;padding:1px 6px;border-radius:4px;font-size:9px}
-        /* ─── Observation cards ─── */
-        .obsGrid{background:white;border-radius:0 0 8px 8px;padding:10px;margin-bottom:8px}
-        .obsCard{border:1px solid #86efac;border-radius:8px;padding:10px;margin-bottom:10px;
-                 background:#f0fdf4}
-        .obsHead{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap}
-        .obsDate{font-size:10px;color:#6b7280}
-        .obsType{font-weight:bold;font-size:11px;color:#166534;margin-bottom:4px}
-        .obsMeta{font-size:10px;color:#6b7280;margin-bottom:3px}
-        .obsDesc{font-size:10px;color:#1f2937;margin-bottom:3px}
-        .obsAction{font-size:10px;color:#1d4ed8;margin-bottom:3px}
-        .obsClose{font-size:10px;color:#166534;margin-bottom:3px}
-        .photoRow{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
-        .obsImg{width:120px;height:90px;object-fit:cover;border-radius:6px;
-                border:1px solid #86efac}
-        /* ─── Footer ─── */
-        .footer{margin-top:20px;padding-top:10px;border-top:2px solid #86efac;
-                font-size:9px;color:#6b7280;text-align:center}
-        .leaf{color:#16a34a;font-size:14px}
-        </style></head><body><div class='page'>
+        .sc{color:#16a34a;font-weight:bold}
+        .so{color:#ea580c;font-weight:bold}
+        .footer{margin-top:14px;padding-top:6px;border-top:1px solid #e2e8f0;
+                font-size:9px;color:#94a3b8;text-align:center}
+        </style></head><body>
         <div class='hdr'>
-          <h1>🌿 تقرير HSE — \(officer.name)</h1>
-          <div class='sub'>الفترة: \(dfStr) — \(dtStr) &nbsp;|&nbsp; تاريخ التقرير: \(reportDate)</div>
-          <div class='sub'>\(checkinStatus)</div>
+          <h1>تقرير HSE — \(officer.name)</h1>
+          <p>الفترة: \(dfStr) — \(dtStr) | تاريخ التقرير: \(reportDate)</p>
+          <p>\(checkinStatus)</p>
         </div>
         <div class='kpiRow'>
-          <div class='kpi ci'><div class='kn'>\(ciRate)%</div><div class='kl'>الحضور</div></div>
+          <div class='kpi'><div class='kn kci'>\(ciRate)%</div><div class='kl'>الحضور</div></div>
           <div class='kpi'><div class='kn'>\(obsCount)</div><div class='kl'>ملاحظات</div></div>
           <div class='kpi'><div class='kn'>\(tbtCount)</div><div class='kl'>TBT</div></div>
           <div class='kpi'><div class='kn'>\(jsoCount)</div><div class='kl'>JSO</div></div>
           <div class='kpi'><div class='kn'>\(nmCount)</div><div class='kl'>Near Miss</div></div>
-          <div class='kpi'><div class='kn'>\(bbsTotal)</div><div class='kl'>بطاقات BBS</div></div>
+          <div class='kpi'><div class='kn'>\(bbsTotal)</div><div class='kl'>BBS</div></div>
         </div>
         \(obsSec)\(tbtSec)\(jsoSec)\(nmSec)\(ciSec)\(bbsSec)
-        <div class='footer'><span class='leaf'>🌱</span> NSH HSE Report — \(reportDate) — تقرير آلي</div>
-        </div></body></html>
+        <div class='footer'>NSH HSE — \(reportDate) — تقرير آلي</div>
+        </body></html>
         """
     }
 
