@@ -3330,12 +3330,11 @@ struct HSEOfficerDetailView: View {
         renderer.setValue(a4land, forKey: "paperRect")
         renderer.setValue(a4land.insetBy(dx: 30, dy: 36), forKey: "printableRect")
         let data = NSMutableData()
-        UIGraphicsBeginPDFContextToData(data, .zero, nil)
+        UIGraphicsBeginPDFContextToData(data, a4land, nil)
         renderer.prepare(forDrawingPages: NSMakeRange(0, renderer.numberOfPages))
-        let bounds = UIGraphicsGetPDFContextBounds()
         for i in 0..<renderer.numberOfPages {
-            UIGraphicsBeginPDFPage()
-            renderer.drawPage(at: i, in: bounds)
+            UIGraphicsBeginPDFPageWithInfo(a4land, nil) // force landscape per page
+            renderer.drawPage(at: i, in: UIGraphicsGetPDFContextBounds())
         }
         UIGraphicsEndPDFContext()
         let safe = officer.name.replacingOccurrences(of: " ", with: "_")
