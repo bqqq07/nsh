@@ -2924,7 +2924,8 @@ struct HSEOfficerDetailView: View {
     @State private var detail: HseOfficerDetailResponse? = nil
     @State private var isLoading    = true
     @State private var errorMsg     = ""
-    @State private var days         = 30
+    @State private var dateFrom     = Calendar.current.date(byAdding: .day, value: -29, to: Date()) ?? Date()
+    @State private var dateTo       = Date()
     @State private var selObs:  HseObservationItem? = nil
     @State private var selTbt:  HseTbtDetailItem?   = nil
     @State private var selJso:  HseJsoItem?         = nil
@@ -2932,23 +2933,20 @@ struct HSEOfficerDetailView: View {
     @State private var pdfURL:  URL?                = nil
     @State private var makingPDF = false
 
-    private let periodOptions = [(7, "7 أيام"), (30, "شهر"), (90, "3 أشهر")]
-
     var body: some View {
         Group {
             if isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let d = detail {
                 List {
-                    // ── Period picker ──────────────────────
-                    Section {
-                        Picker("الفترة", selection: $days) {
-                            ForEach(periodOptions, id: \.0) { opt in
-                                Text(opt.1).tag(opt.0)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: days) { _ in Task { await load() } }
+                    // ── Date range picker ──────────────────
+                    Section(header: Text("الفترة الزمنية").font(.caption)) {
+                        DatePicker("من", selection: $dateFrom,
+                                   in: ...dateTo, displayedComponents: .date)
+                        DatePicker("إلى", selection: $dateTo,
+                                   in: dateFrom...Date(), displayedComponents: .date)
+                        Button("تطبيق") { Task { await load() } }
+                            .frame(maxWidth: .infinity, alignment: .center)
                     }
 
                     // ── Status today ───────────────────────
@@ -2969,7 +2967,7 @@ struct HSEOfficerDetailView: View {
                             VStack(alignment: .trailing, spacing: 2) {
                                 let total = d.observations.count + d.tbts.count + d.jso_closures.count + d.near_misses.count
                                 Text("\(total)").font(.title2).bold().foregroundColor(.blue)
-                                Text("نشاط/\(days)ي").font(.caption2).foregroundColor(.secondary)
+                                Text("نشاط").font(.caption2).foregroundColor(.secondary)
                             }
                         }
                         .padding(.vertical, 2)
@@ -3077,7 +3075,7 @@ struct HSEOfficerDetailView: View {
                     if d.observations.isEmpty && d.tbts.isEmpty && d.jso_closures.isEmpty
                         && d.near_misses.isEmpty && d.bbs.isEmpty {
                         Section {
-                            Text("لا يوجد نشاط في آخر \(days) يوم")
+                            Text("لا يوجد نشاط في الفترة المحددة")
                                 .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.vertical, 8)
@@ -3272,8 +3270,12 @@ struct HSEOfficerDetailView: View {
 
     private func load() async {
         isLoading = true; errorMsg = ""
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+        let df = fmt.string(from: dateFrom)
+        let dt = fmt.string(from: dateTo)
         do {
-            detail = try await NetworkManager.shared.hseOfficerDetail(officerId: officer.id, days: days)
+            detail = try await NetworkManager.shared.hseOfficerDetail(
+                officerId: officer.id, dateFrom: df, dateTo: dt)
         } catch {
             errorMsg = "فشل: \(error.localizedDescription)"
         }
@@ -3282,10 +3284,36 @@ struct HSEOfficerDetailView: View {
 
     // ── PDF Export ────────────────────────────────────
 
+    private func fetchPhotosAsBase64(_ paths: [String]) async -> [String: String] {
+        var result: [String: String] = [:]
+        let token = SessionManager.shared.token ?? ""
+        await withTaskGroup(of: (String, String?).self) { group in
+            for path in paths {
+                group.addTask {
+                    guard !path.isEmpty,
+                          let url = URL(string: "\(BASE_URL)/api/hse/photo/\(path)") else {
+                        return (path, nil)
+                    }
+                    var req = URLRequest(url: url)
+                    req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    guard let (data, _) = try? await URLSession.shared.data(for: req),
+                          !data.isEmpty else { return (path, nil) }
+                    return (path, data.base64EncodedString())
+                }
+            }
+            for await (path, b64) in group {
+                if let b64 { result[path] = b64 }
+            }
+        }
+        return result
+    }
+
     @MainActor
     private func exportPDF(_ d: HseOfficerDetailResponse) async {
         makingPDF = true
-        let html = buildHTMLReport(d)
+        let allPhotoPaths = d.observations.flatMap { ($0.photos ?? []).map { $0.path } }
+        let photoB64 = await fetchPhotosAsBase64(allPhotoPaths)
+        let html = buildHTMLReport(d, photos: photoB64)
         let formatter = UIMarkupTextPrintFormatter(markupText: html)
         let renderer = UIPrintPageRenderer()
         renderer.addPrintFormatter(formatter, startingAtPageAt: 0)
@@ -3309,155 +3337,201 @@ struct HSEOfficerDetailView: View {
         pdfURL = url
     }
 
-    private func buildHTMLReport(_ d: HseOfficerDetailResponse) -> String {
-        let today = todayString()
+    private func buildHTMLReport(_ d: HseOfficerDetailResponse,
+                                  photos: [String: String] = [:]) -> String {
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+        let dfStr = d.date_from ?? fmt.string(from: dateFrom)
+        let dtStr = d.date_to   ?? fmt.string(from: dateTo)
+        let reportDate = todayString()
         let checkinStatus = officer.checked_in
             ? "✅ مسجل دخول — 📍 \(officer.location ?? "")"
             : "❌ لم يسجل دخول اليوم"
-        let obsCount  = d.observations.count
-        let tbtCount  = d.tbts.count
-        let jsoCount  = d.jso_closures.count
-        let nmCount   = d.near_misses.count
-        let bbsTotal  = d.bbs.reduce(0) { $0 + $1.card_count }
+        let obsCount = d.observations.count
+        let tbtCount = d.tbts.count
+        let jsoCount = d.jso_closures.count
+        let nmCount  = d.near_misses.count
+        let bbsTotal = d.bbs.reduce(0) { $0 + $1.card_count }
+        let ciDays   = d.checkin_history.count
+        let ciRate   = d.period_days > 0
+            ? Int(round(Double(ciDays) / Double(d.period_days) * 100)) : 0
 
-        func obsTypeLblH(_ t: String) -> String {
-            switch t { case "unsafe_act": return "فعل خطر"
-                       case "unsafe_condition": return "حالة خطرة"
-                       case "positive": return "إيجابي"
-                       default: return t }
+        func typeLbl(_ t: String) -> String {
+            switch t {
+            case "unsafe_act":       return "فعل خطر"
+            case "unsafe_condition": return "حالة خطرة"
+            case "positive":         return "إيجابي"
+            default:                 return t
+            }
         }
-        func riskLblH(_ r: String) -> String {
-            switch r { case "H": return "<span class='rH'>● عالي</span>"
-                       case "M": return "<span class='rM'>● متوسط</span>"
-                       default:  return "<span class='rL'>● منخفض</span>" }
+        func riskSpan(_ r: String) -> String {
+            switch r {
+            case "H": return "<span class='rH'>● عالي</span>"
+            case "M": return "<span class='rM'>● متوسط</span>"
+            default:  return "<span class='rL'>● منخفض</span>"
+            }
         }
 
-        var obsRows = ""
+        // Observations with embedded photos
+        var obsCards = ""
         for o in d.observations {
-            let st = o.status == "closed"
-                ? "<span class='sc'>مغلق</span>" : "<span class='so'>مفتوح</span>"
-            let photoNote = (o.photos ?? []).isEmpty ? "" : " 📷\((o.photos ?? []).count)"
-            obsRows += """
-            <tr>
-              <td>\(o.date)</td>
-              <td>\(obsTypeLblH(o.obs_type))</td>
-              <td>\(o.category)</td>
-              <td>\(riskLblH(o.risk_level))</td>
-              <td>\(st)</td>
-              <td>\(o.location)</td>
-              <td>\(o.description)\(photoNote)</td>
-              <td>\(o.action_taken)</td>
-            </tr>
+            let stCls = o.status == "closed" ? "sc" : "so"
+            let stLbl = o.status == "closed" ? "مغلق" : "مفتوح"
+            var photoBlock = ""
+            for ph in (o.photos ?? []) {
+                if let b64 = photos[ph.path] {
+                    photoBlock += "<img src='data:image/jpeg;base64,\(b64)' class='obsImg'>"
+                }
+            }
+            obsCards += """
+            <div class='obsCard'>
+              <div class='obsHead'>
+                <span class='obsDate'>\(o.date)</span>
+                <span class='\(stCls)'>\(stLbl)</span>
+                \(riskSpan(o.risk_level))
+              </div>
+              <div class='obsType'>\(typeLbl(o.obs_type)) — \(o.category)</div>
+              \(o.location.isEmpty ? "" : "<div class='obsMeta'>📍 \(o.location)</div>")
+              \(o.description.isEmpty ? "" : "<div class='obsDesc'>\(o.description)</div>")
+              \(o.action_taken.isEmpty ? "" : "<div class='obsAction'>⚡ \(o.action_taken)</div>")
+              \(o.closure_action.isEmpty ? "" : "<div class='obsClose'>✅ \(o.closure_action)</div>")
+              \(photoBlock.isEmpty ? "" : "<div class='photoRow'>\(photoBlock)</div>")
+            </div>
             """
         }
 
         var tbtRows = ""
         for t in d.tbts {
-            tbtRows += """
-            <tr>
-              <td>\(t.date)</td>
-              <td>\(t.topic)</td>
-              <td>\(t.location)</td>
-              <td style='text-align:center;font-weight:bold;color:#7c3aed'>\(t.attendee_count)</td>
-            </tr>
-            """
+            tbtRows += "<tr><td>\(t.date)</td><td>\(t.topic)</td><td>\(t.location)</td><td class='tc bold green'>\(t.attendee_count)</td></tr>"
             if let ats = t.attendees, !ats.isEmpty {
                 let names = ats.map { "\($0.emp_name) (\($0.emp_number))" }.joined(separator: " · ")
-                tbtRows += "<tr><td colspan='4' style='font-size:10px;color:#64748b;padding:4px 8px'>\(names)</td></tr>"
+                tbtRows += "<tr><td colspan='4' class='atRow'>\(names)</td></tr>"
             }
         }
 
         var jsoRows = ""
         for j in d.jso_closures {
-            let photo = (j.photo_path ?? "").isEmpty ? "" : " 📷"
-            jsoRows += "<tr><td>\(j.date)</td><td>\(j.jso_number)</td><td>\(j.location)</td><td>\(j.action_taken)\(photo)</td></tr>"
+            jsoRows += "<tr><td>\(j.date)</td><td>\(j.jso_number)</td><td>\(j.location)</td><td>\(j.action_taken)</td></tr>"
         }
 
         var nmRows = ""
         for n in d.near_misses {
-            let photo = (n.photo_path ?? "").isEmpty ? "" : " 📷"
-            nmRows += "<tr><td>\(n.date)</td><td>\(n.location)</td><td>\(n.description)\(photo)</td><td>\(n.action_taken)</td><td>\(n.reported_to)</td></tr>"
+            nmRows += "<tr><td>\(n.date)</td><td>\(n.location)</td><td>\(n.description)</td><td>\(n.action_taken)</td><td>\(n.reported_to)</td></tr>"
         }
 
-        var checkinRows = ""
+        var ciRows = ""
         for c in d.checkin_history {
-            checkinRows += "<tr><td>\(c.date)</td><td>\(c.location)</td></tr>"
+            ciRows += "<tr><td>\(c.date)</td><td>\(c.location)</td></tr>"
         }
 
         var bbsRows = ""
         for b in d.bbs {
-            bbsRows += "<tr><td>\(b.date)</td><td style='text-align:center;font-weight:bold;color:#16a34a'>\(b.card_count)</td><td>\(b.notes)</td></tr>"
+            bbsRows += "<tr><td>\(b.date)</td><td class='tc bold green'>\(b.card_count)</td><td>\(b.notes)</td></tr>"
         }
 
-        func section(_ title: String, _ tableHeader: String, _ rows: String) -> String {
+        func tableSection(_ title: String, _ header: String, _ rows: String) -> String {
             guard !rows.isEmpty else { return "" }
-            return """
-            <div class='sec'>\(title)</div>
-            <table class='dt'>\(tableHeader)\(rows)</table>
-            """
+            return "<div class='secHdr'>\(title)</div><table class='dt'><thead>\(header)</thead><tbody>\(rows)</tbody></table>"
         }
 
-        let obsSec = section("الملاحظات (\(obsCount))",
-            "<tr><th>التاريخ</th><th>النوع</th><th>الفئة</th><th>الخطورة</th><th>الحالة</th><th>الموقع</th><th>الوصف</th><th>الإجراء</th></tr>",
-            obsRows)
-        let tbtSec = section("TBT (\(tbtCount))",
+        let tbtSec = tableSection("جلسات TBT (\(tbtCount))",
             "<tr><th>التاريخ</th><th>الموضوع</th><th>الموقع</th><th>الحضور</th></tr>", tbtRows)
-        let jsoSec = section("JSO (\(jsoCount))",
+        let jsoSec = tableSection("إغلاق JSO (\(jsoCount))",
             "<tr><th>التاريخ</th><th>رقم JSO</th><th>الموقع</th><th>الإجراء</th></tr>", jsoRows)
-        let nmSec  = section("Near Miss (\(nmCount))",
+        let nmSec  = tableSection("Near Miss (\(nmCount))",
             "<tr><th>التاريخ</th><th>الموقع</th><th>الوصف</th><th>الإجراء</th><th>أُبلغ</th></tr>", nmRows)
-        let ciSec  = section("سجل الحضور",
-            "<tr><th>التاريخ</th><th>الموقع</th></tr>", checkinRows)
-        let bbsSec = section("BBS (\(bbsTotal) بطاقة)",
+        let ciSec  = tableSection("سجل الحضور (\(ciDays) يوم)",
+            "<tr><th>التاريخ</th><th>الموقع</th></tr>", ciRows)
+        let bbsSec = tableSection("بطاقات BBS (\(bbsTotal))",
             "<tr><th>التاريخ</th><th>عدد البطاقات</th><th>ملاحظات</th></tr>", bbsRows)
+
+        let obsSec = obsCards.isEmpty ? "" :
+            "<div class='secHdr'>الملاحظات الميدانية (\(obsCount))</div><div class='obsGrid'>\(obsCards)</div>"
 
         return """
         <!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width">
         <style>
-        body{font-family:Helvetica,Arial,sans-serif;font-size:11px;direction:rtl;color:#1a1a2e;margin:0;padding:0}
-        .hdr{background:#1e3a5f;color:white;padding:18px 20px;margin-bottom:14px}
-        .hdr h1{margin:0;font-size:18px;font-weight:bold}
-        .hdr p{margin:3px 0 0;font-size:10px;color:#93c5fd}
-        .kpi-wrap{width:100%;border-collapse:collapse;margin-bottom:14px}
-        .kpi-wrap td{text-align:center;border:1px solid #e2e8f0;padding:10px 6px;width:20%}
-        .kn{font-size:18px;font-weight:bold;color:#1e40af}
-        .kl{font-size:9px;color:#64748b;margin-top:2px}
-        .sec{background:#1e3a5f;color:white;padding:5px 12px;font-weight:bold;font-size:11px;margin:14px 0 4px}
-        table.dt{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:10px}
-        table.dt th{background:#334155;color:white;padding:5px 7px;border:1px solid #475569;text-align:right}
-        table.dt td{padding:4px 7px;border:1px solid #e2e8f0;vertical-align:top}
-        table.dt tr:nth-child(even) td{background:#f8fafc}
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:Helvetica,Arial,sans-serif;font-size:11px;direction:rtl;
+             color:#14532d;background:#f0fdf4}
+        .page{padding:16px}
+        /* ─── Header ─── */
+        .hdr{background:linear-gradient(135deg,#166534,#15803d);color:white;
+             border-radius:12px;padding:18px 20px;margin-bottom:16px}
+        .hdr h1{font-size:20px;font-weight:bold;margin-bottom:6px}
+        .hdr .sub{font-size:10px;color:#bbf7d0;margin-top:3px}
+        /* ─── KPI strip ─── */
+        .kpiRow{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+        .kpi{flex:1;min-width:80px;background:white;border:1px solid #86efac;
+             border-radius:10px;padding:10px 6px;text-align:center}
+        .kn{font-size:20px;font-weight:bold;color:#166534}
+        .kl{font-size:9px;color:#6b7280;margin-top:2px}
+        .kpi.ci .kn{color:\(ciRate >= 80 ? "#166534" : ciRate >= 50 ? "#d97706" : "#dc2626")}
+        /* ─── Section header ─── */
+        .secHdr{background:#166534;color:white;padding:6px 14px;border-radius:8px 8px 0 0;
+                font-weight:bold;font-size:11px;margin-top:16px}
+        /* ─── Tables ─── */
+        table.dt{width:100%;border-collapse:collapse;font-size:10px;
+                 background:white;border-radius:0 0 8px 8px;overflow:hidden;margin-bottom:8px}
+        table.dt thead th{background:#15803d;color:white;padding:5px 8px;
+                          border:1px solid #166534;text-align:right;font-size:10px}
+        table.dt tbody td{padding:5px 8px;border:1px solid #dcfce7;vertical-align:top}
+        table.dt tbody tr:nth-child(even) td{background:#f0fdf4}
+        .tc{text-align:center}.bold{font-weight:bold}.green{color:#166534}
+        .atRow{font-size:9px;color:#6b7280;padding:3px 8px;background:#f9fafb}
+        /* ─── Risk / status spans ─── */
         .rH{color:#dc2626;font-weight:bold}
         .rM{color:#d97706;font-weight:bold}
         .rL{color:#16a34a;font-weight:bold}
-        .sc{color:#16a34a}.so{color:#ea580c}
-        .ci{padding:4px 12px;margin:2px 0;background:#f0fdf4;border-right:3px solid #16a34a;font-size:10px}
-        .footer{margin-top:16px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;text-align:center}
-        </style></head><body>
+        .sc{background:#dcfce7;color:#166534;padding:1px 6px;border-radius:4px;font-size:9px}
+        .so{background:#ffedd5;color:#c2410c;padding:1px 6px;border-radius:4px;font-size:9px}
+        /* ─── Observation cards ─── */
+        .obsGrid{background:white;border-radius:0 0 8px 8px;padding:10px;margin-bottom:8px}
+        .obsCard{border:1px solid #86efac;border-radius:8px;padding:10px;margin-bottom:10px;
+                 background:#f0fdf4}
+        .obsHead{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap}
+        .obsDate{font-size:10px;color:#6b7280}
+        .obsType{font-weight:bold;font-size:11px;color:#166534;margin-bottom:4px}
+        .obsMeta{font-size:10px;color:#6b7280;margin-bottom:3px}
+        .obsDesc{font-size:10px;color:#1f2937;margin-bottom:3px}
+        .obsAction{font-size:10px;color:#1d4ed8;margin-bottom:3px}
+        .obsClose{font-size:10px;color:#166534;margin-bottom:3px}
+        .photoRow{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+        .obsImg{width:120px;height:90px;object-fit:cover;border-radius:6px;
+                border:1px solid #86efac}
+        /* ─── Footer ─── */
+        .footer{margin-top:20px;padding-top:10px;border-top:2px solid #86efac;
+                font-size:9px;color:#6b7280;text-align:center}
+        .leaf{color:#16a34a;font-size:14px}
+        </style></head><body><div class='page'>
         <div class='hdr'>
-          <h1>تقرير HSE — \(officer.name)</h1>
-          <p>الفترة: آخر \(days) يوم &nbsp;|&nbsp; تاريخ التقرير: \(today)</p>
-          <p>\(checkinStatus)</p>
+          <h1>🌿 تقرير HSE — \(officer.name)</h1>
+          <div class='sub'>الفترة: \(dfStr) — \(dtStr) &nbsp;|&nbsp; تاريخ التقرير: \(reportDate)</div>
+          <div class='sub'>\(checkinStatus)</div>
         </div>
-        <table class='kpi-wrap'><tr>
-          <td><div class='kn'>\(obsCount)</div><div class='kl'>ملاحظات</div></td>
-          <td><div class='kn'>\(tbtCount)</div><div class='kl'>TBT</div></td>
-          <td><div class='kn'>\(jsoCount)</div><div class='kl'>JSO</div></td>
-          <td><div class='kn'>\(nmCount)</div><div class='kl'>Near Miss</div></td>
-          <td><div class='kn'>\(bbsTotal)</div><div class='kl'>بطاقات BBS</div></td>
-        </tr></table>
+        <div class='kpiRow'>
+          <div class='kpi ci'><div class='kn'>\(ciRate)%</div><div class='kl'>الحضور</div></div>
+          <div class='kpi'><div class='kn'>\(obsCount)</div><div class='kl'>ملاحظات</div></div>
+          <div class='kpi'><div class='kn'>\(tbtCount)</div><div class='kl'>TBT</div></div>
+          <div class='kpi'><div class='kn'>\(jsoCount)</div><div class='kl'>JSO</div></div>
+          <div class='kpi'><div class='kn'>\(nmCount)</div><div class='kl'>Near Miss</div></div>
+          <div class='kpi'><div class='kn'>\(bbsTotal)</div><div class='kl'>بطاقات BBS</div></div>
+        </div>
         \(obsSec)\(tbtSec)\(jsoSec)\(nmSec)\(ciSec)\(bbsSec)
-        <div class='footer'>NSH HSE — \(today) — تقرير آلي</div>
-        </body></html>
+        <div class='footer'><span class='leaf'>🌱</span> NSH HSE Report — \(reportDate) — تقرير آلي</div>
+        </div></body></html>
         """
     }
 
     // ── Export text (plain fallback) ──────────────────
 
     private func buildExportText(_ d: HseOfficerDetailResponse) -> String {
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+        let dfStr = d.date_from ?? fmt.string(from: dateFrom)
+        let dtStr = d.date_to   ?? fmt.string(from: dateTo)
         var lines: [String] = []
         lines.append("تقرير HSE — \(officer.name)")
-        lines.append("الفترة: آخر \(days) يوم")
+        lines.append("الفترة: \(dfStr) — \(dtStr)")
         lines.append("تاريخ التقرير: \(todayString())")
         lines.append("")
         if officer.checked_in {

@@ -866,6 +866,8 @@ struct HseOfficerDetailResponse: Codable {
     let checkin_today:   HseCheckinItem?
     let checkin_history: [HseCheckinItem]
     let period_days:     Int
+    let date_from:       String?
+    let date_to:         String?
     let observations:    [HseObservationItem]
     let tbts:            [HseTbtDetailItem]
     let jso_closures:    [HseJsoItem]
@@ -1470,9 +1472,14 @@ extension NetworkManager {
         return try JSONDecoder().decode(HseDashboard.self, from: data)
     }
 
-    func hseOfficerDetail(officerId: Int, days: Int = 30) async throws -> HseOfficerDetailResponse {
+    func hseOfficerDetail(officerId: Int, days: Int = 30,
+                          dateFrom: String? = nil, dateTo: String? = nil) async throws -> HseOfficerDetailResponse {
+        var qs = "days=\(days)"
+        if let df = dateFrom, let dt = dateTo {
+            qs = "date_from=\(df)&date_to=\(dt)"
+        }
         let (data, resp) = try await session.data(for:
-            makeRequest("/api/hse/officer/\(officerId)/detail?days=\(days)"))
+            makeRequest("/api/hse/officer/\(officerId)/detail?\(qs)"))
         try hseCheck(resp, data: data)
         return try JSONDecoder().decode(HseOfficerDetailResponse.self, from: data)
     }
