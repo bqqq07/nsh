@@ -3326,9 +3326,9 @@ struct HSEOfficerDetailView: View {
         let formatter = UIMarkupTextPrintFormatter(markupText: html)
         let renderer = UIPrintPageRenderer()
         renderer.addPrintFormatter(formatter, startingAtPageAt: 0)
-        let a4 = CGRect(x: 0, y: 0, width: 595.2, height: 841.8)
-        renderer.setValue(a4, forKey: "paperRect")
-        renderer.setValue(a4.insetBy(dx: 36, dy: 50), forKey: "printableRect")
+        let a4land = CGRect(x: 0, y: 0, width: 841.8, height: 595.2) // A4 landscape
+        renderer.setValue(a4land, forKey: "paperRect")
+        renderer.setValue(a4land.insetBy(dx: 30, dy: 36), forKey: "printableRect")
         let data = NSMutableData()
         UIGraphicsBeginPDFContextToData(data, .zero, nil)
         renderer.prepare(forDrawingPages: NSMakeRange(0, renderer.numberOfPages))
@@ -3352,9 +3352,6 @@ struct HSEOfficerDetailView: View {
         let dfStr = d.date_from ?? fmt.string(from: dateFrom)
         let dtStr = d.date_to   ?? fmt.string(from: dateTo)
         let reportDate = todayString()
-        let checkinStatus = officer.checked_in
-            ? "✅ مسجل دخول — 📍 \(officer.location ?? "")"
-            : "❌ لم يسجل دخول اليوم"
         let obsCount = d.observations.count
         let tbtCount = d.tbts.count
         let jsoCount = d.jso_closures.count
@@ -3363,55 +3360,60 @@ struct HSEOfficerDetailView: View {
         let ciDays   = d.checkin_history.count
         let ciRate   = d.period_days > 0
             ? Int(round(Double(ciDays) / Double(d.period_days) * 100)) : 0
+        let ciColor  = ciRate >= 80 ? "#16a34a" : ciRate >= 50 ? "#d97706" : "#dc2626"
 
         func typeLbl(_ t: String) -> String {
             switch t {
-            case "unsafe_act":       return "فعل خطر"
-            case "unsafe_condition": return "حالة خطرة"
-            case "positive":         return "إيجابي"
+            case "unsafe_act":       return "Unsafe Act"
+            case "unsafe_condition": return "Unsafe Condition"
+            case "positive":         return "Positive"
             default:                 return t
             }
         }
-        func riskSpan(_ r: String) -> String {
+        // Risk: colored background cell (like screenshot)
+        func riskCell(_ r: String) -> String {
             switch r {
-            case "H": return "<span class='rH'>عالي</span>"
-            case "M": return "<span class='rM'>متوسط</span>"
-            default:  return "<span class='rL'>منخفض</span>"
+            case "H": return "<td style='background:#ef4444;color:white;text-align:center;font-weight:bold'>H</td>"
+            case "M": return "<td style='background:#f59e0b;color:white;text-align:center;font-weight:bold'>M</td>"
+            default:  return "<td style='background:#22c55e;color:white;text-align:center;font-weight:bold'>L</td>"
             }
         }
 
-        // Observations table — each row + optional photo sub-row
+        // Observations — each row inline with photos column
         var obsRows = ""
+        var sn = 0
         for o in d.observations {
-            let stSpan = o.status == "closed"
-                ? "<span class='sc'>مغلق</span>" : "<span class='so'>مفتوح</span>"
-            let detailLines = [o.description, o.action_taken.isEmpty ? "" : "⚡ " + o.action_taken,
-                               o.closure_action.isEmpty ? "" : "✅ " + o.closure_action]
-                .filter { !$0.isEmpty }.joined(separator: "<br>")
+            sn += 1
+            let stCell = o.status == "closed"
+                ? "<td style='color:#16a34a;font-weight:bold'>Closed</td>"
+                : "<td style='color:#ea580c;font-weight:bold'>Open</td>"
+            let photoImgs = (o.photos ?? []).compactMap { photos[$0.path] }
+                .prefix(3)
+                .map { "<img src='data:image/jpeg;base64,\($0)' width='55' height='42' style='margin:1px;border:1px solid #ccc'>" }
+                .joined()
+            let bgEven = sn % 2 == 0 ? " style='background:#f8fafc'" : ""
             obsRows += """
-            <tr>
+            <tr\(bgEven)>
+              <td style='text-align:center'>\(sn)</td>
               <td>\(o.date)</td>
+              <td>\(o.location)</td>
               <td>\(typeLbl(o.obs_type))</td>
               <td>\(o.category)</td>
-              <td>\(riskSpan(o.risk_level))</td>
-              <td>\(stSpan)</td>
-              <td>\(o.location)</td>
-              <td>\(detailLines)</td>
+              \(riskCell(o.risk_level))
+              \(stCell)
+              <td>\(o.description)</td>
+              <td>\(o.action_taken)\(o.closure_action.isEmpty ? "" : "<br><small>" + o.closure_action + "</small>")</td>
+              <td>\(photoImgs)</td>
             </tr>
             """
-            let phs = (o.photos ?? []).compactMap { photos[$0.path] }
-            if !phs.isEmpty {
-                let imgs = phs.map { "<img src='data:image/jpeg;base64,\($0)' class='th'>" }.joined()
-                obsRows += "<tr class='prow'><td colspan='7'>\(imgs)</td></tr>"
-            }
         }
 
         var tbtRows = ""
         for t in d.tbts {
-            tbtRows += "<tr><td>\(t.date)</td><td>\(t.topic)</td><td>\(t.location)</td><td class='tc'>\(t.attendee_count)</td></tr>"
+            tbtRows += "<tr><td>\(t.date)</td><td>\(t.topic)</td><td>\(t.location)</td><td style='text-align:center'>\(t.attendee_count)</td></tr>"
             if let ats = t.attendees, !ats.isEmpty {
                 let names = ats.map { "\($0.emp_name) (\($0.emp_number))" }.joined(separator: " · ")
-                tbtRows += "<tr><td colspan='4' class='sub'>\(names)</td></tr>"
+                tbtRows += "<tr><td colspan='4' style='font-size:9px;color:#64748b;padding:2px 6px;background:#f8fafc'>\(names)</td></tr>"
             }
         }
 
@@ -3432,78 +3434,140 @@ struct HSEOfficerDetailView: View {
 
         var bbsRows = ""
         for b in d.bbs {
-            bbsRows += "<tr><td>\(b.date)</td><td class='tc'>\(b.card_count)</td><td>\(b.notes)</td></tr>"
+            bbsRows += "<tr><td>\(b.date)</td><td style='text-align:center'>\(b.card_count)</td><td>\(b.notes)</td></tr>"
         }
 
         func sec(_ title: String, _ header: String, _ rows: String) -> String {
             guard !rows.isEmpty else { return "" }
             return """
-            <div class='sh'>\(title)</div>
-            <table class='dt'><thead>\(header)</thead><tbody>\(rows)</tbody></table>
+            <p style='background:#1e293b;color:white;padding:4px 10px;font-weight:bold;
+                      font-size:10px;margin:12px 0 0'>\(title)</p>
+            <table style='width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:4px'>
+            <thead style='background:#334155;color:white'>\(header)</thead>
+            <tbody>\(rows)</tbody></table>
             """
         }
 
-        let obsSec = sec("الملاحظات الميدانية (\(obsCount))",
-            "<tr><th>التاريخ</th><th>النوع</th><th>الفئة</th><th>الخطورة</th><th>الحالة</th><th>الموقع</th><th>التفاصيل</th></tr>",
-            obsRows)
+        let thStyle = "style='padding:4px 6px;border:1px solid #475569;text-align:right'"
+        let tdStyle = "style='padding:3px 6px;border:1px solid #e2e8f0;vertical-align:top'"
+
+        // Build obs header/rows with inline styles (no class-based CSS for reliability)
+        let obsHeader = """
+        <tr><th \(thStyle) style='width:24px'>SN</th>
+            <th \(thStyle)>Date</th>
+            <th \(thStyle)>Location</th>
+            <th \(thStyle)>Type</th>
+            <th \(thStyle)>Category</th>
+            <th \(thStyle) style='width:30px'>Risk</th>
+            <th \(thStyle) style='width:44px'>Status</th>
+            <th \(thStyle)>Observation Description</th>
+            <th \(thStyle)>Immediate Action</th>
+            <th \(thStyle) style='width:80px'>Photos</th></tr>
+        """
+        // Re-build obs rows with inline td styles
+        var obsRowsStyled = ""
+        sn = 0
+        for o in d.observations {
+            sn += 1
+            let bg = sn % 2 == 0 ? "#f8fafc" : "#ffffff"
+            let td = "style='padding:3px 5px;border:1px solid #e2e8f0;vertical-align:top;background:\(bg)'"
+            let riskBg: String
+            switch o.risk_level {
+            case "H": riskBg = "#ef4444"
+            case "M": riskBg = "#f59e0b"
+            default:  riskBg = "#22c55e"
+            }
+            let riskLbl = o.risk_level.isEmpty ? "—" : o.risk_level
+            let stColor = o.status == "closed" ? "#16a34a" : "#ea580c"
+            let stLbl   = o.status == "closed" ? "Closed" : "Open"
+            let photoImgs = (o.photos ?? []).compactMap { photos[$0.path] }
+                .prefix(3)
+                .map { "<img src='data:image/jpeg;base64,\($0)' width='54' height='40' style='margin:1px;display:inline'>" }
+                .joined()
+            let closureNote = o.closure_action.isEmpty ? "" : "<br><span style='font-size:8px'>\(o.closure_action)</span>"
+            obsRowsStyled += """
+            <tr>
+              <td style='padding:3px 5px;border:1px solid #e2e8f0;background:\(bg);text-align:center'>\(sn)</td>
+              <td \(td)>\(o.date)</td>
+              <td \(td)>\(o.location)</td>
+              <td \(td)>\(typeLbl(o.obs_type))</td>
+              <td \(td)>\(o.category)</td>
+              <td style='padding:3px 5px;border:1px solid #e2e8f0;background:\(riskBg);color:white;text-align:center;font-weight:bold'>\(riskLbl)</td>
+              <td style='padding:3px 5px;border:1px solid #e2e8f0;background:\(bg);color:\(stColor);font-weight:bold'>\(stLbl)</td>
+              <td \(td)>\(o.description)</td>
+              <td \(td)>\(o.action_taken)\(closureNote)</td>
+              <td style='padding:3px 5px;border:1px solid #e2e8f0;background:\(bg)'>\(photoImgs)</td>
+            </tr>
+            """
+        }
+
+        let obsSec = obsRowsStyled.isEmpty ? "" : """
+            <p style='background:#1e293b;color:white;padding:4px 10px;font-weight:bold;font-size:10px;margin:12px 0 0'>Observations (\(obsCount))</p>
+            <table style='width:100%;border-collapse:collapse;font-size:9px;margin-bottom:4px'>
+            <thead style='background:#334155;color:white'>\(obsHeader)</thead>
+            <tbody>\(obsRowsStyled)</tbody></table>
+            """
+
         let tbtSec = sec("TBT (\(tbtCount))",
-            "<tr><th>التاريخ</th><th>الموضوع</th><th>الموقع</th><th>الحضور</th></tr>", tbtRows)
+            "<tr><th \(thStyle)>Date</th><th \(thStyle)>Topic</th><th \(thStyle)>Location</th><th \(thStyle)>Attendees</th></tr>",
+            tbtRows)
         let jsoSec = sec("JSO (\(jsoCount))",
-            "<tr><th>التاريخ</th><th>رقم JSO</th><th>الموقع</th><th>الإجراء</th></tr>", jsoRows)
+            "<tr><th \(thStyle)>Date</th><th \(thStyle)>JSO #</th><th \(thStyle)>Location</th><th \(thStyle)>Action</th></tr>",
+            jsoRows)
         let nmSec  = sec("Near Miss (\(nmCount))",
-            "<tr><th>التاريخ</th><th>الموقع</th><th>الوصف</th><th>الإجراء</th><th>أُبلغ</th></tr>", nmRows)
-        let ciSec  = sec("سجل الحضور (\(ciDays) يوم)",
-            "<tr><th>التاريخ</th><th>الموقع</th></tr>", ciRows)
-        let bbsSec = sec("بطاقات BBS (\(bbsTotal))",
-            "<tr><th>التاريخ</th><th>عدد البطاقات</th><th>ملاحظات</th></tr>", bbsRows)
+            "<tr><th \(thStyle)>Date</th><th \(thStyle)>Location</th><th \(thStyle)>Description</th><th \(thStyle)>Action</th><th \(thStyle)>Reported To</th></tr>",
+            nmRows)
+        let ciSec  = sec("Check-in History (\(ciDays) days)",
+            "<tr><th \(thStyle)>Date</th><th \(thStyle)>Location</th></tr>", ciRows)
+        let bbsSec = sec("BBS Cards (\(bbsTotal))",
+            "<tr><th \(thStyle)>Date</th><th \(thStyle)>Cards</th><th \(thStyle)>Notes</th></tr>", bbsRows)
 
         return """
-        <!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+        <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
         <style>
-        body{font-family:Helvetica,Arial,sans-serif;font-size:11px;direction:rtl;
-             color:#1e293b;background:#fff;margin:0;padding:16px}
-        .hdr{background:#1e293b;color:#fff;padding:14px 18px;margin-bottom:14px}
-        .hdr h1{font-size:17px;font-weight:bold;margin-bottom:4px}
-        .hdr p{font-size:10px;color:#94a3b8;margin-top:2px}
-        .kpiRow{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
-        .kpi{flex:1;min-width:72px;border:1px solid #e2e8f0;padding:8px 4px;text-align:center}
-        .kn{font-size:18px;font-weight:bold;color:#1e293b}
-        .kl{font-size:9px;color:#64748b;margin-top:2px}
-        .kci{color:\(ciRate >= 80 ? "#16a34a" : ciRate >= 50 ? "#d97706" : "#dc2626")}
-        .sh{background:#334155;color:#fff;padding:5px 12px;font-weight:bold;font-size:11px;margin-top:14px}
-        table.dt{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:6px}
-        table.dt thead th{background:#475569;color:#fff;padding:5px 7px;
-                          border:1px solid #64748b;text-align:right}
-        table.dt tbody td{padding:4px 7px;border:1px solid #e2e8f0;vertical-align:top}
-        table.dt tbody tr:nth-child(even) td{background:#f8fafc}
-        .prow td{padding:4px 7px;border:1px solid #e2e8f0;background:#f1f5f9}
-        .th{width:72px;height:54px;object-fit:cover;margin-left:4px;
-            border:1px solid #cbd5e1;vertical-align:top}
-        .tc{text-align:center;font-weight:bold}
-        .sub{font-size:9px;color:#64748b;padding:2px 7px;background:#f8fafc}
-        .rH{color:#dc2626;font-weight:bold}
-        .rM{color:#d97706;font-weight:bold}
-        .rL{color:#16a34a;font-weight:bold}
-        .sc{color:#16a34a;font-weight:bold}
-        .so{color:#ea580c;font-weight:bold}
-        .footer{margin-top:14px;padding-top:6px;border-top:1px solid #e2e8f0;
-                font-size:9px;color:#94a3b8;text-align:center}
+        body{font-family:Helvetica,Arial,sans-serif;font-size:10px;color:#1e293b;
+             background:#fff;margin:0;padding:14px}
         </style></head><body>
-        <div class='hdr'>
-          <h1>تقرير HSE — \(officer.name)</h1>
-          <p>الفترة: \(dfStr) — \(dtStr) | تاريخ التقرير: \(reportDate)</p>
-          <p>\(checkinStatus)</p>
-        </div>
-        <div class='kpiRow'>
-          <div class='kpi'><div class='kn kci'>\(ciRate)%</div><div class='kl'>الحضور</div></div>
-          <div class='kpi'><div class='kn'>\(obsCount)</div><div class='kl'>ملاحظات</div></div>
-          <div class='kpi'><div class='kn'>\(tbtCount)</div><div class='kl'>TBT</div></div>
-          <div class='kpi'><div class='kn'>\(jsoCount)</div><div class='kl'>JSO</div></div>
-          <div class='kpi'><div class='kn'>\(nmCount)</div><div class='kl'>Near Miss</div></div>
-          <div class='kpi'><div class='kn'>\(bbsTotal)</div><div class='kl'>BBS</div></div>
-        </div>
+        <table style='width:100%;border-collapse:collapse;margin-bottom:10px'>
+        <tr>
+          <td style='vertical-align:top'>
+            <div style='font-size:15px;font-weight:bold'>HSE Officer Report</div>
+            <div style='font-size:10px;color:#475569;margin-top:2px'>\(officer.name)</div>
+            <div style='font-size:9px;color:#64748b;margin-top:2px'>Period: \(dfStr) — \(dtStr) &nbsp;|&nbsp; Generated: \(reportDate)</div>
+            <div style='font-size:9px;color:#64748b;margin-top:2px'>\(officer.checked_in ? "✅ Checked in today — " + (officer.location ?? "") : "❌ Not checked in today")</div>
+          </td>
+          <td style='text-align:right;vertical-align:top'>
+            <table style='border-collapse:collapse;display:inline-table'>
+            <tr>
+              <td style='border:1px solid #e2e8f0;padding:6px 10px;text-align:center'>
+                <div style='font-size:16px;font-weight:bold;color:\(ciColor)'>\(ciRate)%</div>
+                <div style='font-size:8px;color:#64748b'>Check-in</div>
+              </td>
+              <td style='border:1px solid #e2e8f0;padding:6px 10px;text-align:center'>
+                <div style='font-size:16px;font-weight:bold'>\(obsCount)</div>
+                <div style='font-size:8px;color:#64748b'>Obs</div>
+              </td>
+              <td style='border:1px solid #e2e8f0;padding:6px 10px;text-align:center'>
+                <div style='font-size:16px;font-weight:bold'>\(tbtCount)</div>
+                <div style='font-size:8px;color:#64748b'>TBT</div>
+              </td>
+              <td style='border:1px solid #e2e8f0;padding:6px 10px;text-align:center'>
+                <div style='font-size:16px;font-weight:bold'>\(jsoCount)</div>
+                <div style='font-size:8px;color:#64748b'>JSO</div>
+              </td>
+              <td style='border:1px solid #e2e8f0;padding:6px 10px;text-align:center'>
+                <div style='font-size:16px;font-weight:bold'>\(nmCount)</div>
+                <div style='font-size:8px;color:#64748b'>Near Miss</div>
+              </td>
+              <td style='border:1px solid #e2e8f0;padding:6px 10px;text-align:center'>
+                <div style='font-size:16px;font-weight:bold'>\(bbsTotal)</div>
+                <div style='font-size:8px;color:#64748b'>BBS</div>
+              </td>
+            </tr></table>
+          </td>
+        </tr></table>
         \(obsSec)\(tbtSec)\(jsoSec)\(nmSec)\(ciSec)\(bbsSec)
-        <div class='footer'>NSH HSE — \(reportDate) — تقرير آلي</div>
+        <p style='margin-top:10px;padding-top:6px;border-top:1px solid #e2e8f0;font-size:8px;color:#94a3b8;text-align:center'>NSH HSE — \(reportDate) — Auto-generated report</p>
         </body></html>
         """
     }
